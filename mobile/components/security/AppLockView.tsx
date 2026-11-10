@@ -491,7 +491,6 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
 
             {unlockMethod === 'pattern' && lockState.patternEnabled ? (
               <PatternInput
-                label="Pola 3x3"
                 value={pattern}
                 onChange={(next) => {
                   if (localError) {
@@ -665,7 +664,7 @@ const styles = StyleSheet.create({
   subtitle: {
     ...Type.body,
     color: Colors.inkSoft,
-    marginBottom: Space.sm,
+    marginBottom: Space.xs,
   },
   cooldownBanner: {
     flexDirection: 'row',

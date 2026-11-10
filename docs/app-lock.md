@@ -8,11 +8,15 @@ only; it does not change the account password or other devices.
 
 ### Add a pattern
 
-After creating a PIN, enter the current PIN and open **Pola kunci (3x3)** on the
-same settings screen. Draw a pattern and repeat it in the confirmation grid,
-then select **Aktifkan pola kunci**. Connect 4-9 distinct points. Drag across the
-grid, or select **Ketuk titik** to enter points sequentially with accessible
-buttons. Straight jumps automatically include an unvisited midpoint.
+After creating a PIN, open **Pola kunci (3x3)** and select **Atur pola kunci**.
+Draw 4-9 distinct points, select **Lanjut ke konfirmasi pola**, and redraw the
+same pattern. Enter the current PIN beside the save action and select
+**Aktifkan pola kunci**. Only one grid is shown at a time. Input is drag-only;
+the tap-point mode has been removed following device feedback. Straight jumps
+automatically include an unvisited midpoint. PIN remains the accessible
+alternative when drawing is difficult. Incorrect current PIN clears the PIN
+without discarding the completed patterns; background, locking, storage failure,
+and cooldown still clear the full draft.
 
 On the lock screen, select **Gunakan pola kunci**, enter the pattern, and press
 **Buka kunci dengan pola**. Submission is never automatic. PIN remains the
@@ -89,8 +93,8 @@ machine to test all features; do not build APKs on this VPS.
    sign-in recovery, and logout during an in-flight token refresh. With SwiftKey
    open, verify every PIN field and action remains reachable.
 
-For patterns, test setup mismatch, drag and sequential taps, automatic skipped
-midpoints, clear/re-entry, screen-reader controls, and PIN fallback. Mix wrong
+For patterns, test staged setup, mismatch, drag, automatic skipped midpoints,
+clear/re-entry, wrong-PIN retry, cancel, and accessible PIN fallback. Mix wrong
 PIN and pattern attempts to verify the shared cooldown persists after restart.
 Background while drawing or confirming, then verify transient input is cleared.
 Change the PIN and verify the existing pattern still works. Remove the pattern
@@ -100,6 +104,12 @@ No backend migration or production database access is required for this feature.
 
 ## Automated verification
 
+- APK device-feedback fixes: 134 mobile tests passed, including legacy account
+  deletion routing, Android credential background/resume gates, drag-only input,
+  staged pattern confirmation, and launcher configuration. Fifteen backend
+  deletion regressions passed against isolated test data. Expo Doctor passed all
+  20 checks; TypeScript and Android JavaScript/Hermes export passed. An isolated
+  filtered prebuild generated native launcher resources without compiling an APK.
 - Mobile tests after pattern enhancement: 100 passed, covering pattern helpers,
   shared cooldown, persistence, legacy records, stale proofs, recovery, and
   JavaScript grid interaction contracts. Stubbed responder tests do not validate

@@ -72,6 +72,15 @@ identity. The token must have an issuance timestamp within five minutes, with at
 most 60 seconds of future clock drift. This path requires an Android build with
 native Google sign-in, not Expo Go.
 
+The mobile proof selector uses Google only when the profile explicitly says
+`has_password: false` and `google_linked: true`. Older profiles missing capability
+flags default to password verification, never an inferred Google requirement.
+The backend still verifies ownership and decides whether the proof is valid.
+Duplicate submissions are blocked. Android credential activities can background
+the app: the normal privacy lock still activates, and a successful Google proof
+waits up to 60 seconds for foreground and local unlock before deletion proceeds.
+Session changes invalidate that proof. Cancelled Google prompts never delete.
+
 Deletion removes the live user row and cascades categories, transactions, debts,
 debt payments, recurring schedules, Telegram link codes, and recovery challenges.
 It disconnects application identities; it does not delete the external Google or

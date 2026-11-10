@@ -272,11 +272,6 @@ function createPatternInput() {
     changes,
     value: () => value,
     board: () => boardElement(renderer.tree),
-    tapNode(node) {
-      const button = byLabel(renderer.tree, NODE_LABELS[node]);
-      assert.ok(button, `tap node ${node} must be rendered`);
-      renderer.act(() => button.props.onPress());
-    },
     draw(x, y) {
       const board = boardElement(renderer.tree);
       assert.ok(board, 'draw board must be rendered');
@@ -306,11 +301,6 @@ function createPatternInput() {
       const board = boardElement(renderer.tree);
       assert.ok(board, 'draw board must be rendered');
       return board.props.onMoveShouldSetResponder();
-    },
-    switchTo(label) {
-      const tab = byLabel(renderer.tree, label);
-      assert.ok(tab, `mode tab ${label} must be rendered`);
-      renderer.act(() => tab.props.onPress());
     },
     clear() {
       const button = byLabel(renderer.tree, 'Hapus pola');
@@ -475,25 +465,37 @@ test('responder terminate clears the partially drawn pattern', () => {
   assert.deepEqual(grid.value(), [], 'a terminated gesture must not resume');
 });
 
-test('tap mode selects accessible nodes sequentially and preserves midpoint rules', () => {
+test('tap mode UI is absent and only the drag board selects nodes', () => {
   const grid = createPatternInput();
+  const all = elements(grid.renderer.tree);
 
-  grid.switchTo('Mode ketuk titik berurutan');
-  grid.tapNode(0);
-  assert.deepEqual(grid.value(), [0]);
+  for (const label of ['Mode ketuk titik berurutan', 'Mode garis sentuh']) {
+    assert.equal(byLabel(grid.renderer.tree, label), undefined, `${label} must not be rendered`);
+  }
+  for (const label of Object.values(NODE_LABELS)) {
+    assert.equal(
+      byLabel(grid.renderer.tree, label),
+      undefined,
+      'individual tap targets must not be rendered',
+    );
+  }
+  assert.equal(
+    all.some((element) => typeof element.props.onPress === 'function' &&
+      element.props.accessibilityRole === 'button' &&
+      element.props.accessibilityLabel !== 'Hapus pola'),
+    false,
+    'the grid must expose no tap-to-select buttons',
+  );
 
-  grid.tapNode(2);
-  assert.deepEqual(grid.value(), [0, 1, 2], 'tap mode must append the skipped midpoint too');
-
-  grid.tapNode(5);
-  assert.deepEqual(grid.value(), [0, 1, 2, 5]);
-
-  const selected = byLabel(grid.renderer.tree, NODE_LABELS[1]);
-  assert.equal(selected.props.disabled, true, 'selected tap nodes must be disabled');
-  assert.equal(selected.props.accessibilityState.selected, true);
-
-  grid.switchTo('Mode garis sentuh');
-  assert.ok(grid.board(), 'switching back must restore the draw board');
+  assert.ok(grid.board(), 'the drag board remains the only pattern input');
+  grid.draw(40, 40);
+  grid.move(200, 40);
+  assert.deepEqual(grid.value(), [0, 1, 2], 'drag remains the only node selection path');
+  assert.equal(
+    grid.renderer.refs[1].current,
+    true,
+    'the active drag latch stays owned by the responder',
+  );
 });
 
 test('the grid exposes no submit control or auto-submit callback', () => {

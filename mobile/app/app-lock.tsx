@@ -37,6 +37,8 @@ import {
 
 const PIN_PATTERN = /^[0-9]{6}$/;
 
+type PatternSetupStep = 'summary' | 'draw' | 'repeat';
+
 function sanitizePinInput(value: string): string {
   return value.replace(/[^0-9]/g, '').slice(0, 6);
 }
@@ -67,6 +69,7 @@ export default function AppLockSettingsScreen() {
   const [changeConfirmPin, setChangeConfirmPin] = useState('');
   const [newPattern, setNewPattern] = useState<number[]>([]);
   const [confirmPattern, setConfirmPattern] = useState<number[]>([]);
+  const [patternStep, setPatternStep] = useState<PatternSetupStep>('summary');
 
   const [error, setError] = useState<string | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -99,6 +102,7 @@ export default function AppLockSettingsScreen() {
     setChangeConfirmPin('');
     setNewPattern([]);
     setConfirmPattern([]);
+    setPatternStep('summary');
   }, []);
 
   useEffect(() => {
@@ -384,6 +388,57 @@ export default function AppLockSettingsScreen() {
     }
   };
 
+  const handleStartPatternSetup = () => {
+    if (submitLockRef.current || isBusy || inCooldown) {
+      return;
+    }
+    setError(null);
+    newPatternRef.current = [];
+    confirmPatternRef.current = [];
+    setNewPattern([]);
+    setConfirmPattern([]);
+    setPatternStep('draw');
+  };
+
+  const handleAdvancePatternToRepeat = () => {
+    if (submitLockRef.current || isBusy || inCooldown) {
+      return;
+    }
+    const nextCandidate = newPatternRef.current;
+    if (!isValidLockPattern(nextCandidate)) {
+      setError('Pola baru harus menghubungkan minimal 4 titik.');
+      return;
+    }
+    setError(null);
+    confirmPatternRef.current = [];
+    setConfirmPattern([]);
+    setPatternStep('repeat');
+  };
+
+  const handleBackToDrawPattern = () => {
+    if (submitLockRef.current || isBusy || inCooldown) {
+      return;
+    }
+    setError(null);
+    newPatternRef.current = [];
+    confirmPatternRef.current = [];
+    setNewPattern([]);
+    setConfirmPattern([]);
+    setPatternStep('draw');
+  };
+
+  const handleCancelPatternSetup = () => {
+    if (submitLockRef.current || isBusy || inCooldown) {
+      return;
+    }
+    setError(null);
+    newPatternRef.current = [];
+    confirmPatternRef.current = [];
+    setNewPattern([]);
+    setConfirmPattern([]);
+    setPatternStep('summary');
+  };
+
   const handleSavePattern = async () => {
     if (submitLockRef.current || isBusy || inCooldown) {
       return;
@@ -392,12 +447,9 @@ export default function AppLockSettingsScreen() {
     const nextCandidate = newPatternRef.current;
     const confirmCandidate = confirmPatternRef.current;
 
-    if (!PIN_PATTERN.test(currCandidate)) {
-      setError('Masukkan PIN saat ini (6 digit) untuk menyimpan pola kunci.');
-      return;
-    }
     if (!isValidLockPattern(nextCandidate)) {
       setError('Pola baru harus menghubungkan minimal 4 titik.');
+      setPatternStep('draw');
       return;
     }
     if (!isValidLockPattern(confirmCandidate)) {
@@ -405,7 +457,13 @@ export default function AppLockSettingsScreen() {
       return;
     }
     if (!patternsMatch(nextCandidate, confirmCandidate)) {
-      setError('Pola baru dan konfirmasi pola tidak cocok.');
+      confirmPatternRef.current = [];
+      setConfirmPattern([]);
+      setError('Pola baru dan konfirmasi pola tidak cocok. Silakan ulangi konfirmasi pola.');
+      return;
+    }
+    if (!PIN_PATTERN.test(currCandidate)) {
+      setError('Masukkan PIN saat ini (6 digit) untuk menyimpan pola kunci.');
       return;
     }
 
@@ -424,8 +482,29 @@ export default function AppLockSettingsScreen() {
       }
     } catch (err) {
       if (mountedRef.current) {
-        clearAllPinFields();
-        setNowMs(Date.now());
+        const latestState = getAppLockState();
+        const now = Date.now();
+        setNowMs(now);
+        if (
+          !latestState.ready ||
+          latestState.locked ||
+          latestState.covered ||
+          latestState.storageError ||
+          latestState.retryAt > now
+        ) {
+          clearAllPinFields();
+        } else {
+          newPinRef.current = '';
+          confirmPinRef.current = '';
+          currentPinRef.current = '';
+          changeNextPinRef.current = '';
+          changeConfirmPinRef.current = '';
+          setNewPin('');
+          setConfirmPin('');
+          setCurrentPin('');
+          setChangeNextPin('');
+          setChangeConfirmPin('');
+        }
         setError(
           err instanceof Error && err.message
             ? err.message
@@ -750,8 +829,9 @@ export default function AppLockSettingsScreen() {
               <View style={styles.sectionBlock}>
                 <Text style={styles.sectionHeading}>Pola kunci (3x3)</Text>
                 <Text style={styles.sectionSub}>
-                  Tambahkan pola minimal 4 titik sebagai pendamping PIN 6 digit. Isi PIN saat ini
-                  di bagian atas, lalu gambar atau ketuk pola baru dan konfirmasinya.
+                  Tambahkan pola minimal 4 titik sebagai pendamping PIN 6 digit. Pola bersifat
+                  opsional; PIN 6 digit tetap tersedia jika kamu tidak ingin menggunakan gestur
+                  tarik.
                 </Text>
 
                 <View style={styles.biometricStatusRow}>
@@ -761,47 +841,147 @@ export default function AppLockSettingsScreen() {
                   </Text>
                 </View>
 
-                <PatternInput
-                  label={lockState.patternEnabled ? 'Pola baru (4-9 titik)' : 'Buat pola baru (4-9 titik)'}
-                  value={newPattern}
-                  onChange={(next) => {
-                    if (error) setError(null);
-                    newPatternRef.current = next;
-                    setNewPattern(next);
-                  }}
-                  disabled={isBusy || inCooldown}
-                  accessibilityLabel="Pola baru 3x3"
-                />
-
-                <PatternInput
-                  label="Konfirmasi pola baru"
-                  value={confirmPattern}
-                  onChange={(next) => {
-                    if (error) setError(null);
-                    confirmPatternRef.current = next;
-                    setConfirmPattern(next);
-                  }}
-                  disabled={isBusy || inCooldown}
-                  accessibilityLabel="Konfirmasi pola baru 3x3"
-                />
-
-                <Button
-                  title={lockState.patternEnabled ? 'Simpan pola baru' : 'Aktifkan pola kunci'}
-                  icon="grid-outline"
-                  onPress={handleSavePattern}
-                  loading={isBusy}
-                  disabled={isBusy || inCooldown}
-                />
-
-                {lockState.patternEnabled ? (
-                  <Button
-                    title="Hapus pola kunci"
-                    variant="secondary"
-                    onPress={handleRemovePatternPrompt}
-                    loading={isBusy}
-                    disabled={isBusy || inCooldown}
-                  />
-                ) : null}
+                {patternStep === 'summary' ? (
+                  <View style={styles.wizardActionStack}>
+                    {activeError ? (
+                      <View style={styles.errorBanner} accessibilityLiveRegion="polite">
+                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                        <Text style={styles.errorText}>{activeError}</Text>
+                      </View>
+                    ) : null}
+                    <Button
+                      title={lockState.patternEnabled ? 'Ubah pola kunci' : 'Atur pola kunci'}
+                      variant="secondary"
+                      icon="grid-outline"
+                      onPress={handleStartPatternSetup}
+                      disabled={isBusy || inCooldown}
+                    />
+                    {lockState.patternEnabled ? (
+                      <Button
+                        title="Hapus pola kunci"
+                        variant="ghost"
+                        onPress={handleRemovePatternPrompt}
+                        loading={isBusy}
+                        disabled={isBusy || inCooldown}
+                      />
+                    ) : null}
+                  </View>
+                ) : patternStep === 'draw' ? (
+                  <View style={styles.wizardStepBlock}>
+                    <Text style={styles.wizardStepIndicator}>Langkah 1 dari 2</Text>
+                    <PatternInput
+                      label={
+                        lockState.patternEnabled
+                          ? 'Gambar pola baru (4-9 titik)'
+                          : 'Buat pola baru (4-9 titik)'
+                      }
+                      hint="Sentuh salah satu titik lalu tarik garis tanpa melepas jari."
+                      value={newPattern}
+                      onChange={(next) => {
+                        if (error) setError(null);
+                        newPatternRef.current = next;
+                        setNewPattern(next);
+                      }}
+                      disabled={isBusy || inCooldown}
+                      accessibilityLabel="Pola baru 3x3"
+                    />
+                    {activeError ? (
+                      <View style={styles.errorBanner} accessibilityLiveRegion="polite">
+                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                        <Text style={styles.errorText}>{activeError}</Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.wizardActionStack}>
+                      <Button
+                        title="Lanjut ke konfirmasi pola"
+                        onPress={handleAdvancePatternToRepeat}
+                        disabled={isBusy || inCooldown || !isValidLockPattern(newPattern)}
+                      />
+                      <Button
+                        title="Batal"
+                        variant="ghost"
+                        onPress={handleCancelPatternSetup}
+                        disabled={isBusy || inCooldown}
+                      />
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.wizardStepBlock}>
+                    <Text style={styles.wizardStepIndicator}>Langkah 2 dari 2</Text>
+                    <View style={styles.draftSummaryRow}>
+                      <Ionicons name="checkmark-circle-outline" size={16} color={Colors.inkSoft} />
+                      <Text style={styles.draftSummaryText}>
+                        Pola pertama siap dikonfirmasi. Ulangi pola yang sama lalu masukkan PIN saat
+                        ini di bawah untuk menyimpan.
+                      </Text>
+                    </View>
+                    <PatternInput
+                      label="Ulangi pola baru untuk konfirmasi"
+                      hint="Tarik pola yang sama persis seperti langkah sebelumnya."
+                      value={confirmPattern}
+                      onChange={(next) => {
+                        if (error) setError(null);
+                        confirmPatternRef.current = next;
+                        setConfirmPattern(next);
+                      }}
+                      disabled={isBusy || inCooldown}
+                      accessibilityLabel="Konfirmasi pola baru 3x3"
+                    />
+                    <Input
+                      label="PIN saat ini untuk menyimpan pola"
+                      placeholder="••••••"
+                      value={currentPin}
+                      onChangeText={(text) => {
+                        if (error) setError(null);
+                        const clean = sanitizePinInput(text);
+                        currentPinRef.current = clean;
+                        setCurrentPin(clean);
+                      }}
+                      keyboardType="number-pad"
+                      inputMode="numeric"
+                      maxLength={6}
+                      secureTextEntry
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      autoComplete="off"
+                      textContentType="none"
+                      contextMenuHidden
+                      editable={!isBusy && !inCooldown}
+                      returnKeyType="done"
+                      onSubmitEditing={handleSavePattern}
+                      accessibilityLabel="PIN saat ini untuk menyimpan pola"
+                      hint="Verifikasi PIN 6 digit diperlukan sebelum pola disimpan."
+                      fieldStyle={styles.pinField}
+                    />
+                    {activeError ? (
+                      <View style={styles.errorBanner} accessibilityLiveRegion="polite">
+                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                        <Text style={styles.errorText}>{activeError}</Text>
+                      </View>
+                    ) : null}
+                    <View style={styles.wizardActionStack}>
+                      <Button
+                        title={lockState.patternEnabled ? 'Simpan pola baru' : 'Aktifkan pola kunci'}
+                        icon="grid-outline"
+                        onPress={handleSavePattern}
+                        loading={isBusy}
+                        disabled={isBusy || inCooldown || !isValidLockPattern(confirmPattern)}
+                      />
+                      <Button
+                        title="Gambar ulang pola pertama"
+                        variant="secondary"
+                        onPress={handleBackToDrawPattern}
+                        disabled={isBusy || inCooldown}
+                      />
+                      <Button
+                        title="Batal"
+                        variant="ghost"
+                        onPress={handleCancelPatternSetup}
+                        disabled={isBusy || inCooldown}
+                      />
+                    </View>
+                  </View>
+                )}
               </View>
 
               <View style={styles.sectionBlock}>
@@ -1069,6 +1249,32 @@ const styles = StyleSheet.create({
   rowValue: {
     ...Type.bodyStrong,
     color: Colors.ink,
+  },
+  wizardStepBlock: {
+    gap: Space.sm,
+  },
+  wizardStepIndicator: {
+    ...Type.micro,
+    textTransform: 'uppercase',
+    color: Colors.inkMuted,
+  },
+  draftSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.control,
+    paddingVertical: Space.sm,
+    paddingHorizontal: Space.md,
+  },
+  draftSummaryText: {
+    ...Type.caption,
+    color: Colors.inkSoft,
+    flex: 1,
+  },
+  wizardActionStack: {
+    gap: Space.sm,
+    marginTop: Space.xs,
   },
   pinField: {
     fontFamily: Fonts.semibold,

@@ -1914,10 +1914,134 @@ test('the unlock view defaults to PIN, offers a pattern fallback, and clears tra
   assert.match(view, /AppState\.addEventListener\('change'[\s\S]*setPattern\(\[\]\)/);
 
   assert.match(input, /accessibilityRole="button"/);
-  assert.match(input, /Mode ketuk titik berurutan/);
+  assert.doesNotMatch(input, /Mode ketuk titik berurutan|Mode garis sentuh/);
+  assert.doesNotMatch(input, /tapNode|onNodePress|selectedNode/);
   assert.match(input, /Hapus pola/);
+  assert.match(input, /onStartShouldSetResponder/);
+  assert.match(input, /onResponderMove/);
   assert.match(input, /const handleClear = useCallback/);
   assert.doesNotMatch(input, /onSubmit|onComplete|autoSubmit/i, 'the grid must not auto-submit');
+});
+
+test('an Android background during the credential sheet holds the proof until the app lock is unlocked', async () => {
+  const harness = createHarness();
+  await prepareUnlocked(harness);
+
+  const proof = harness.module.withAppLockCredentialPrompt(async () => {
+    harness.module.handleAppLockState('background');
+    assert.equal(harness.state().locked, true, 'background locks immediately');
+    harness.module.handleAppLockState('active');
+    assert.equal(harness.state().locked, true, 'returning active must not open the gate');
+    return 'native-proof';
+  });
+  let settled = false;
+  proof.then(() => { settled = true; }, () => { settled = true; });
+  await flush();
+  await flush();
+  assert.equal(settled, false, 'the proof must stay pending while the gate is locked');
+
+  assert.equal(await harness.module.unlockWithPin(PIN), true);
+  assert.equal(await proof, 'native-proof');
+  assert.equal(harness.state().locked, false);
+});
+
+test('a credential prompt on a no-lock installation resumes after background', async () => {
+  const harness = createHarness();
+  await harness.module.hydrateAppLock();
+  assert.equal(harness.state().ready, true);
+  assert.equal(harness.state().enabled, false);
+
+  const proof = await harness.module.withAppLockCredentialPrompt(async () => {
+    harness.module.handleAppLockState('background');
+    assert.equal(harness.state().locked, false, 'no lock record means no gate to unlock');
+    harness.module.handleAppLockState('active');
+    return 'no-lock-proof';
+  });
+
+  assert.equal(proof, 'no-lock-proof');
+});
+
+test('cancelling the credential prompt while backgrounded returns null without waiting for the gate', async () => {
+  const harness = createHarness();
+  await prepareUnlocked(harness);
+
+  const result = await Promise.race([
+    harness.module.withAppLockCredentialPrompt(async () => {
+      harness.module.handleAppLockState('background');
+      assert.equal(harness.state().locked, true);
+      return null;
+    }),
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error('cancel must not wait for foreground or unlock')),
+      300,
+    )),
+  ]);
+
+  assert.equal(result, null);
+  assert.equal(harness.state().locked, true, 'background still locks normally');
+});
+
+test('a proof returning before the app is active again stays pending until active', async () => {
+  const harness = createHarness();
+  await harness.module.hydrateAppLock();
+
+  const proof = harness.module.withAppLockCredentialPrompt(async () => {
+    harness.module.handleAppLockState('background');
+    return 'early-proof';
+  });
+  let settled = false;
+  proof.then(() => { settled = true; }, () => { settled = true; });
+  await flush();
+  await flush();
+  assert.equal(settled, false, 'a backgrounded screen must not complete verification');
+
+  harness.module.handleAppLockState('active');
+  assert.equal(await proof, 'early-proof');
+});
+
+test('credential prompt wrapper rejects after logout and never invokes the prompt', async () => {
+  const harness = createHarness();
+  await prepareUnlocked(harness);
+
+  let invoked = false;
+  const error = await expectRejects(
+    harness.module.withAppLockCredentialPrompt(async () => {
+      harness.module.setAppLockSession(false);
+      invoked = true;
+      return 'logged-out-proof';
+    }),
+    'a proof finishing after logout must be rejected',
+  );
+  assert.equal(invoked, true, 'the in-flight prompt finishes before the rejection is observed');
+  assert.match(error.message, /Sesi berubah/);
+
+  let afterLogoutInvoked = false;
+  const nextError = await expectRejects(
+    harness.module.withAppLockCredentialPrompt(async () => {
+      afterLogoutInvoked = true;
+      return 'unauthenticated-proof';
+    }),
+  );
+  assert.equal(afterLogoutInvoked, false);
+  assert.match(nextError.message, /dibatalkan/);
+});
+
+test('credential prompt wrapper refuses to start while the app lock is engaged', async () => {
+  const harness = createHarness();
+  await prepareUnlocked(harness);
+  await lock(harness);
+
+  let invoked = false;
+  const error = await expectRejects(
+    harness.module.withAppLockCredentialPrompt(async () => {
+      invoked = true;
+      return 'locked-proof';
+    }),
+  );
+
+  assert.equal(invoked, false);
+  assert.match(error.message, /Buka kunci aplikasi/);
+  assert.equal(harness.state().locked, true);
 });
 
 test('pattern setup snapshots the caller input before the first await', async () => {

@@ -44,6 +44,8 @@ let visibility = 'active';
 let generation = 0;
 let running = false;
 let biometricPrompt = false;
+let credentialPrompt: object | null = null;
+let sessionGeneration = 0;
 let storageFailed = false;
 const listeners = new Set<() => void>();
 
@@ -142,6 +144,7 @@ export async function hydrateAppLock(): Promise<void> {
 export function setAppLockSession(next: boolean): void {
   if (authenticated === next) return;
   authenticated = next;
+  sessionGeneration += 1;
   generation += 1;
   publish({ locked: next && (record !== null || !state.ready || storageFailed),
     covered: visibility !== 'active', error: storageFailed ? STORAGE_ERROR : null });
@@ -157,6 +160,48 @@ export function handleAppLockState(next: string): void {
       locked: state.locked || (authenticated && record !== null &&
         (next === 'background' || !biometricPrompt)) });
   } else publish({ covered: false });
+}
+
+/** Native credential activities can background Android. Keep the normal gate,
+ * then require foreground and a locally unlocked, unchanged session on return.
+ * This never opens the gate or exempts a background transition from locking.
+ */
+export async function withAppLockCredentialPrompt<T>(prompt: () => Promise<T>): Promise<T> {
+  const ticket = generation;
+  active(ticket);
+  if (credentialPrompt || biometricPrompt || state.locked || state.covered || storageFailed) {
+    throw new Error('Buka kunci aplikasi sebelum memverifikasi akun.');
+  }
+  const lease = {};
+  const sessionTicket = sessionGeneration;
+  credentialPrompt = lease;
+  try {
+    const result = await prompt();
+    if (result === null) return result;
+    await new Promise<void>((resolve, reject) => {
+      let unsubscribe = () => {};
+      const timeout = setTimeout(() => {
+        unsubscribe();
+        reject(new Error('Verifikasi kedaluwarsa. Konfirmasi akun kembali.'));
+      }, 60_000);
+      const check = () => {
+        if (sessionTicket !== sessionGeneration || !authenticated || storageFailed) {
+          clearTimeout(timeout);
+          unsubscribe();
+          reject(new Error(storageFailed ? STORAGE_ERROR : 'Sesi berubah. Konfirmasi akun kembali.'));
+        } else if (visibility === 'active' && state.ready && !state.locked && !state.covered) {
+          clearTimeout(timeout);
+          unsubscribe();
+          resolve();
+        }
+      };
+      unsubscribe = subscribeAppLock(check);
+      check();
+    });
+    return result;
+  } finally {
+    if (credentialPrompt === lease) credentialPrompt = null;
+  }
 }
 
 async function exclusive<T>(operation: (ticket: number) => Promise<T>): Promise<T> {

@@ -177,6 +177,22 @@ from a filtered input snapshot using the existing installed dependencies. This
 checks the ignore policy and bundle inputs, not EAS authentication, dependency
 installation, native prebuild, signing, or an actual APK/cloud build.
 
+### 2c. Android launcher icon
+
+`mobile/app.json` explicitly references the existing branded PNG assets under
+`mobile/assets/images/`: the legacy icon, adaptive foreground, and monochrome
+foreground. The adaptive background is ink (`#171A16`). These assets were
+previously only present on the separate launcher-icon branch; they are now
+included with the current mobile features and retained by `.easignore`.
+
+A filtered temporary `expo prebuild --platform android --no-install` generated
+launcher resources for all five Android densities, adaptive/monochrome XML, and
+manifest icon references. This generated resources only, not an APK. An already
+installed APK cannot get a new launcher icon from a JavaScript update. Build an
+updated APK on EAS from the branch containing these files, install it, and verify
+the normal and themed icon in the device launcher. Do not uninstall just to clear
+a cached icon unless local-only state has been backed up.
+
 ### 3. Auth flow
 
 1. Register or log in. The API returns an access token (30 min) and a refresh

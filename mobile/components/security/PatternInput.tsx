@@ -19,24 +19,20 @@ export interface PatternInputProps {
   accessibilityLabel?: string;
 }
 
-type InputMode = 'draw' | 'tap';
-
 const NODES = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
 
-const NODE_POSITION_LABELS: Record<number, string> = {
-  0: 'baris 1 kolom 1 (kiri atas)',
-  1: 'baris 1 kolom 2 (tengah atas)',
-  2: 'baris 1 kolom 3 (kanan atas)',
-  3: 'baris 2 kolom 1 (kiri tengah)',
-  4: 'baris 2 kolom 2 (tengah)',
-  5: 'baris 2 kolom 3 (kanan tengah)',
-  6: 'baris 3 kolom 1 (kiri bawah)',
-  7: 'baris 3 kolom 2 (tengah bawah)',
-  8: 'baris 3 kolom 3 (kanan bawah)',
-};
-
 const DEFAULT_BOARD_SIZE = 240;
+const MAX_BOARD_SIZE = 260;
 const NODE_HIT_RATIO = 0.38;
+const NODE_OUTER_SIZE = 44;
+const NODE_OUTER_RADIUS = NODE_OUTER_SIZE / 2;
+
+function clampBoardSize(size: number): number {
+  if (!Number.isFinite(size) || size <= 0) {
+    return DEFAULT_BOARD_SIZE;
+  }
+  return Math.min(MAX_BOARD_SIZE, Math.round(size));
+}
 
 function resolveHitNode(x: number, y: number, boardSize: number): number | null {
   if (!Number.isFinite(x) || !Number.isFinite(y) || boardSize <= 0) {
@@ -93,8 +89,8 @@ export function PatternInput({
   hint,
   accessibilityLabel = 'Pola kunci 3x3',
 }: PatternInputProps) {
-  const [mode, setMode] = useState<InputMode>('draw');
   const [boardSize, setBoardSize] = useState(DEFAULT_BOARD_SIZE);
+  const [isDrawing, setIsDrawing] = useState(false);
   const activePatternRef = useRef<number[]>(value);
   const drawingRef = useRef(false);
 
@@ -106,13 +102,16 @@ export function PatternInput({
   }, []);
 
   useEffect(() => {
-    if (disabled || value.length === 0) drawingRef.current = false;
+    if (disabled || value.length === 0) {
+      drawingRef.current = false;
+      setIsDrawing(false);
+    }
   }, [disabled, value.length]);
 
   const handleBoardLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
     if (width > 0) {
-      setBoardSize(width);
+      setBoardSize(clampBoardSize(width));
     }
   }, []);
 
@@ -133,34 +132,36 @@ export function PatternInput({
 
   const handleResponderGrant = useCallback(
     (event: GestureResponderEvent) => {
-      if (disabled || mode !== 'draw') {
+      if (disabled) {
         return;
       }
       const { locationX, locationY } = event.nativeEvent;
       const hit = resolveHitNode(locationX, locationY, boardSize);
       if (hit !== null) {
         drawingRef.current = true;
+        setIsDrawing(true);
         const next = appendPatternNode([], hit);
         activePatternRef.current = next;
         onChange(next);
       }
     },
-    [boardSize, disabled, mode, onChange]
+    [boardSize, disabled, onChange]
   );
 
   const handleResponderMove = useCallback(
     (event: GestureResponderEvent) => {
-      if (disabled || mode !== 'draw' || !drawingRef.current) {
+      if (disabled || !drawingRef.current) {
         return;
       }
       const { locationX, locationY } = event.nativeEvent;
       appendAtCoordinates(locationX, locationY, activePatternRef.current);
     },
-    [appendAtCoordinates, disabled, mode]
+    [appendAtCoordinates, disabled]
   );
 
   const handleResponderRelease = useCallback(() => {
     drawingRef.current = false;
+    setIsDrawing(false);
   }, []);
 
   const handleResponderTerminate = useCallback(() => {
@@ -168,205 +169,124 @@ export function PatternInput({
       return;
     }
     drawingRef.current = false;
+    setIsDrawing(false);
     if (activePatternRef.current.length > 0) {
       activePatternRef.current = [];
       onChange([]);
     }
   }, [onChange]);
 
-  const handleTapNode = useCallback(
-    (node: number) => {
-      if (disabled) {
-        return;
-      }
-      const next = appendPatternNode(activePatternRef.current, node);
-      if (!samePattern(activePatternRef.current, next)) {
-        activePatternRef.current = next;
-        onChange(next);
-      }
-    },
-    [disabled, onChange]
-  );
-
   const handleClear = useCallback(() => {
     if (disabled || value.length === 0) {
       return;
     }
     drawingRef.current = false;
+    setIsDrawing(false);
     activePatternRef.current = [];
     onChange([]);
   }, [disabled, onChange, value.length]);
 
   const selectedSet = new Set(value);
+  const startNode = value.length > 0 ? value[0] : null;
+  const endNode = value.length > 0 ? value[value.length - 1] : null;
 
   return (
     <View style={styles.container}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
 
-      <View style={styles.modeSwitch} accessibilityRole="tablist">
-        <Pressable
-          onPress={() => {
-            drawingRef.current = false;
-            setMode('draw');
-          }}
-          disabled={disabled}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: mode === 'draw', disabled }}
-          accessibilityLabel="Mode garis sentuh"
+      <View style={styles.boardWrap} onLayout={handleBoardLayout}>
+        <View
+          accessible
+          accessibilityLabel={`${accessibilityLabel}. ${value.length} dari minimal 4 titik terhubung. Tarik garis antar titik, atau gunakan PIN 6 digit sebagai alternatif aksesibel jika gestur tarik sulit dilakukan.`}
+          accessibilityHint="Sentuh salah satu titik lalu tarik tanpa melepas jari untuk menghubungkan minimal 4 titik."
+          onStartShouldSetResponder={(event) =>
+            !disabled &&
+            resolveHitNode(
+              event.nativeEvent.locationX,
+              event.nativeEvent.locationY,
+              boardSize
+            ) !== null
+          }
+          onMoveShouldSetResponder={() => false}
+          onResponderTerminationRequest={() => false}
+          onResponderGrant={handleResponderGrant}
+          onResponderMove={handleResponderMove}
+          onResponderRelease={handleResponderRelease}
+          onResponderTerminate={handleResponderTerminate}
           style={[
-            styles.modeTab,
-            mode === 'draw' && styles.modeTabActive,
-            disabled && styles.controlDisabled,
+            styles.board,
+            { width: boardSize, height: boardSize },
+            disabled && styles.boardDisabled,
           ]}
         >
-          <Text style={[styles.modeTabText, mode === 'draw' && styles.modeTabTextActive]}>
-            Garis sentuh
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => {
-            drawingRef.current = false;
-            setMode('tap');
-          }}
-          disabled={disabled}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: mode === 'tap', disabled }}
-          accessibilityLabel="Mode ketuk titik berurutan"
-          style={[
-            styles.modeTab,
-            mode === 'tap' && styles.modeTabActive,
-            disabled && styles.controlDisabled,
-          ]}
-        >
-          <Text style={[styles.modeTabText, mode === 'tap' && styles.modeTabTextActive]}>
-            Ketuk titik
-          </Text>
-        </Pressable>
-      </View>
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            {value.map((node, index) => {
+              if (index === 0) {
+                return null;
+              }
+              const from = getNodeCenter(value[index - 1], boardSize);
+              const to = getNodeCenter(node, boardSize);
+              const dx = to.x - from.x;
+              const dy = to.y - from.y;
+              const length = Math.hypot(dx, dy);
+              const angleRad = Math.atan2(dy, dx);
+              const midX = (from.x + to.x) / 2;
+              const midY = (from.y + to.y) / 2;
 
-      <View style={styles.boardWrap}>
-        {mode === 'draw' ? (
-          <View
-            onLayout={handleBoardLayout}
-            accessible
-            accessibilityLabel={`${accessibilityLabel}. ${value.length} dari minimal 4 titik dipilih. Gunakan tab Ketuk titik untuk memilih titik secara berurutan dengan pembaca layar.`}
-            onStartShouldSetResponder={(event) => !disabled && resolveHitNode(
-              event.nativeEvent.locationX, event.nativeEvent.locationY, boardSize
-            ) !== null}
-            onMoveShouldSetResponder={() => false}
-            onResponderTerminationRequest={() => false}
-            onResponderGrant={handleResponderGrant}
-            onResponderMove={handleResponderMove}
-            onResponderRelease={handleResponderRelease}
-            onResponderTerminate={handleResponderTerminate}
-            style={[
-              styles.board,
-              { width: boardSize, height: boardSize },
-              disabled && styles.boardDisabled,
-            ]}
-          >
-            <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-              {value.map((node, index) => {
-                if (index === 0) {
-                  return null;
-                }
-                const from = getNodeCenter(value[index - 1], boardSize);
-                const to = getNodeCenter(node, boardSize);
-                const dx = to.x - from.x;
-                const dy = to.y - from.y;
-                const length = Math.hypot(dx, dy);
-                const angleRad = Math.atan2(dy, dx);
-                const midX = (from.x + to.x) / 2;
-                const midY = (from.y + to.y) / 2;
+              return (
+                <View
+                  key={`seg-${value[index - 1]}-${node}`}
+                  style={[
+                    styles.segment,
+                    {
+                      width: length,
+                      left: midX - length / 2,
+                      top: midY - 1,
+                      transform: [{ rotate: `${angleRad}rad` }],
+                    },
+                  ]}
+                />
+              );
+            })}
 
-                return (
+            {NODES.map((node) => {
+              const center = getNodeCenter(node, boardSize);
+              const selected = selectedSet.has(node);
+              const isEndpoint = node === startNode || node === endNode;
+              const isActiveHead = isDrawing && node === endNode;
+
+              return (
+                <View
+                  key={`node-${node}`}
+                  style={[
+                    styles.nodeOuter,
+                    {
+                      left: center.x - NODE_OUTER_RADIUS,
+                      top: center.y - NODE_OUTER_RADIUS,
+                    },
+                    selected && styles.nodeOuterSelected,
+                    isActiveHead && styles.nodeOuterActiveHead,
+                  ]}
+                >
                   <View
-                    key={`seg-${value[index - 1]}-${node}`}
                     style={[
-                      styles.segment,
-                      {
-                        width: length,
-                        left: midX - length / 2,
-                        top: midY - 1.5,
-                        transform: [{ rotate: `${angleRad}rad` }],
-                      },
+                      styles.nodeDot,
+                      selected && styles.nodeDotSelected,
+                      isEndpoint && styles.nodeDotEndpoint,
                     ]}
                   />
-                );
-              })}
-
-              {NODES.map((node) => {
-                const center = getNodeCenter(node, boardSize);
-                const selected = selectedSet.has(node);
-                return (
-                  <View
-                    key={`node-${node}`}
-                    style={[
-                      styles.drawNodeOuter,
-                      {
-                        left: center.x - 24,
-                        top: center.y - 24,
-                      },
-                      selected && styles.nodeOuterSelected,
-                    ]}
-                  >
-                    <View style={[styles.nodeDot, selected && styles.nodeDotSelected]} />
-                  </View>
-                );
-              })}
-            </View>
+                </View>
+              );
+            })}
           </View>
-        ) : (
-          <View
-            style={[
-              styles.tapBoard,
-              { width: boardSize, minHeight: boardSize },
-              disabled && styles.boardDisabled,
-            ]}
-          >
-            {[0, 1, 2].map((row) => (
-              <View key={`row-${row}`} style={styles.tapRow}>
-                {[0, 1, 2].map((col) => {
-                  const node = row * 3 + col;
-                  const selected = selectedSet.has(node);
-                  const posLabel = NODE_POSITION_LABELS[node];
-                  return (
-                    <Pressable
-                      key={`tap-${node}`}
-                      onPress={() => handleTapNode(node)}
-                      disabled={disabled || selected}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Titik ${posLabel}`}
-                      accessibilityHint={
-                        selected
-                          ? 'Titik ini sudah dipilih dalam urutan pola'
-                          : 'Ketuk untuk menambahkan titik ke urutan pola'
-                      }
-                      accessibilityState={{
-                        disabled: disabled || selected,
-                        selected,
-                      }}
-                      style={({ pressed }) => [
-                        styles.tapNodeButton,
-                        selected && styles.nodeOuterSelected,
-                        pressed && !selected && !disabled && styles.tapNodePressed,
-                      ]}
-                    >
-                      <View style={[styles.nodeDot, selected && styles.nodeDotSelected]} />
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
-        )}
+        </View>
       </View>
 
       <View style={styles.footerRow}>
         <Text style={styles.counterText} accessibilityLiveRegion="polite">
           {value.length === 0
-            ? 'Belum ada titik dipilih (minimal 4 titik)'
+            ? 'Sentuh titik lalu tarik garis (minimal 4 titik)'
             : value.length < 4
             ? `${value.length} titik dipilih (minimal 4 titik)`
             : `${value.length} titik dipilih`}
@@ -386,6 +306,10 @@ export function PatternInput({
           <Text style={styles.clearButtonText}>Ulangi pola</Text>
         </Pressable>
       </View>
+
+      <Text style={styles.a11yCaption}>
+        Kesulitan menggambar pola? Gunakan PIN 6 digit sebagai alternatif yang ramah pembaca layar.
+      </Text>
     </View>
   );
 }
@@ -404,116 +328,63 @@ const styles = StyleSheet.create({
     ...Type.caption,
     color: Colors.inkMuted,
   },
-  modeSwitch: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.control,
-    borderWidth: 1,
-    borderColor: Colors.line,
-    padding: 2,
-    gap: Space.xs,
-  },
-  modeTab: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: Radius.control - 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Space.sm,
-  },
-  modeTabActive: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-  },
-  modeTabText: {
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-    lineHeight: 18,
-    color: Colors.inkSoft,
-  },
-  modeTabTextActive: {
-    fontFamily: Fonts.semibold,
-    color: Colors.ink,
-  },
   boardWrap: {
+    width: '100%',
+    maxWidth: MAX_BOARD_SIZE,
+    alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: Space.xs,
   },
   board: {
-    backgroundColor: Colors.paper,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    borderRadius: Radius.block,
     position: 'relative',
-    overflow: 'hidden',
-  },
-  tapBoard: {
-    backgroundColor: Colors.paper,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    borderRadius: Radius.block,
-    padding: Space.md,
-    justifyContent: 'space-between',
-    gap: Space.md,
   },
   boardDisabled: {
     opacity: 0.45,
   },
-  tapRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: Space.md,
-  },
-  drawNodeOuter: {
+  nodeOuter: {
     position: 'absolute',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    width: NODE_OUTER_SIZE,
+    height: NODE_OUTER_SIZE,
+    borderRadius: NODE_OUTER_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  tapNodeButton: {
-    width: 56,
-    height: 56,
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tapNodePressed: {
-    backgroundColor: Colors.surfaceAlt,
   },
   nodeOuterSelected: {
-    borderColor: Colors.ink,
-    borderWidth: 2,
     backgroundColor: Colors.inkTint,
+    borderWidth: 1,
+    borderColor: Colors.lineStrong,
+  },
+  nodeOuterActiveHead: {
+    borderColor: Colors.ink,
+    borderWidth: 1.5,
   },
   nodeDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: Colors.inkMuted,
+    backgroundColor: Colors.lineStrong,
+    borderWidth: 1.5,
+    borderColor: Colors.inkSoft,
   },
   nodeDotSelected: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.ink,
+    borderWidth: 0,
+  },
+  nodeDotEndpoint: {
     width: 14,
     height: 14,
     borderRadius: 7,
     backgroundColor: Colors.ink,
+    borderWidth: 0,
   },
   segment: {
     position: 'absolute',
-    height: 3,
-    borderRadius: 1.5,
+    height: 2,
+    borderRadius: 1,
     backgroundColor: Colors.ink,
   },
   footerRow: {
@@ -521,6 +392,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Space.sm,
+    paddingTop: Space.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.line,
   },
   counterText: {
     ...Type.caption,
@@ -547,6 +421,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     color: Colors.ink,
+  },
+  a11yCaption: {
+    ...Type.caption,
+    color: Colors.inkMuted,
   },
   controlDisabled: {
     opacity: 0.45,
