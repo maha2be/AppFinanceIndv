@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as RN from 'react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Category, TransactionBrowserFilters, TransactionType } from '../../types';
@@ -53,12 +53,18 @@ export function TransactionFilters({
   const [draft, setDraft] = useState<TransactionFilterDraft>(() => filtersToDraft(filters));
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Parent renders must not wipe typed input. Re-seed only when the sheet opens,
+  // reading the newest applied filters through a ref.
+  const latestFiltersRef = useRef(filters);
+  latestFiltersRef.current = filters;
+
   useEffect(() => {
-    if (visible) {
-      setDraft(filtersToDraft(filters));
-      setErrors({});
+    if (!visible) {
+      return;
     }
-  }, [filters, visible]);
+    setDraft(filtersToDraft(latestFiltersRef.current));
+    setErrors({});
+  }, [visible]);
 
   if (!visible) {
     return null;

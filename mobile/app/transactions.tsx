@@ -7,9 +7,7 @@ import {
   Category,
   Transaction,
   TransactionBrowserFilters,
-  TransactionPageQuery,
   TransactionSort,
-  TransactionType,
 } from '../types';
 import { Colors, Fonts, Radius, Space, Type } from '../utils/theme';
 import {
@@ -747,17 +745,6 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
       </View>
     ) : undefined;
 
-  const renderedRows =
-    loading && !refreshing
-      ? []
-      : items.map((item) => (
-          <TransactionCard
-            key={item.id}
-            transaction={item}
-            onPress={() => ExpoRouter.router.push(`/transaction/${item.id}`)}
-          />
-        ));
-
   return (
     <Screen scroll={false} bottomInset contentStyle={styles.screenContent}>
       <FlatList
@@ -790,18 +777,11 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
             />
           ) : undefined
         }
-      >
-        {listHeader}
-        {renderedRows.length > 0 ? renderedRows : listEmpty}
-        {listFooter}
-      </FlatList>
+      />
 
       <TransactionFilters
         visible={filterSheetOpen}
-        filters={{
-          ...filters,
-          ...(searchText.trim() ? { q: searchText.trim() } : {}),
-        }}
+        filters={filters}
         categories={categories}
         loadingCategories={loadingCategories}
         categoryError={categoryError}
@@ -1053,150 +1033,6 @@ const styles = StyleSheet.create({
   paginationFooter: {
     paddingTop: Space.lg,
     paddingBottom: Space.md,
-  },
-  pagerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Space.sm,
-  },
-  strip: {
-    flexGrow: 0,
-    flexShrink: 1,
-  },
-  stripContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.sm,
-    paddingVertical: 2,
-  },
-  navButton: {
-    minWidth: 44,
-    minHeight: 44,
-    paddingHorizontal: Space.sm,
-    borderRadius: Radius.control,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tokenButton: {
-    minWidth: 44,
-    minHeight: 44,
-    paddingHorizontal: Space.md,
-    borderRadius: Radius.control,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ellipsisButton: {
-    borderStyle: 'dashed',
-  },
-  tokenSelected: {
-    backgroundColor: Colors.ink,
-    borderColor: Colors.ink,
-  },
-  buttonDisabled: {
-    opacity: 0.4,
-  },
-  tokenText: {
-    fontFamily: Fonts.medium,
-    fontSize: 14,
-    lineHeight: 18,
-    color: Colors.ink,
-    fontVariant: ['tabular-nums'],
-  },
-  tokenTextSelected: {
-    fontFamily: Fonts.semibold,
-    color: Colors.onInk,
-  },
-  ellipsisText: {
-    fontFamily: Fonts.semibold,
-    fontSize: 14,
-    lineHeight: 18,
-    color: Colors.inkSoft,
-    letterSpacing: 1,
-  },
-  jumpBody: {
-    paddingTop: Space.sm,
-    paddingBottom: Space.sm,
-    gap: Space.md,
-  },
-  jumpHint: {
-    fontFamily: Fonts.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: Colors.inkSoft,
-  },
-  jumpBounds: {
-    fontFamily: Fonts.semibold,
-    color: Colors.ink,
-    fontVariant: ['tabular-nums'],
-  },
-  jumpRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.sm,
-  },
-  jumpInputWrap: {
-    flex: 1,
-    minHeight: 48,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    borderRadius: Radius.control,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Space.md,
-    justifyContent: 'center',
-  },
-  jumpInputWrapError: {
-    borderColor: Colors.danger,
-  },
-  jumpInput: {
-    minHeight: 44,
-    fontFamily: Fonts.semibold,
-    fontSize: 16,
-    lineHeight: 22,
-    color: Colors.ink,
-    fontVariant: ['tabular-nums'],
-  },
-  jumpSubmitButton: {
-    minWidth: 48,
-    minHeight: 48,
-    borderRadius: Radius.control,
-    backgroundColor: Colors.ink,
-    borderWidth: 1,
-    borderColor: Colors.ink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jumpError: {
-    fontFamily: Fonts.regular,
-    fontSize: 12,
-    lineHeight: 16,
-    color: Colors.danger,
-  },
-  jumpFooter: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.line,
-    paddingTop: Space.md,
-  },
-  cancelJumpBtn: {
-    minHeight: 44,
-    borderRadius: Radius.control,
-    borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelJumpText: {
-    fontFamily: Fonts.semibold,
-    fontSize: 15,
-    lineHeight: 20,
-    color: Colors.ink,
   },
   sortList: {
     paddingVertical: Space.xs,

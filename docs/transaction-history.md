@@ -32,7 +32,10 @@ every width: for 99 pages, page 1 shows `1 2 3 ... 99`, page 5 shows
 - `page_size` is always 20 and cannot be raised by the client.
 - `total_pages` is `ceil(total / 20)`, or `0` when nothing matches.
 - Invalid dates, reversed ranges, unknown sort values or a page below 1 return
-  HTTP 422. Text is literal: `%`, `_` and `!` are data, not wildcards.
+  HTTP 422. Text is literal: `%`, `_` and `!` are data, not wildcards. Case is
+  folded by the database on both sides of the comparison. SQLite folds ASCII
+  only, so non-ASCII text matches case-sensitively there; PostgreSQL folds
+  Unicode correctly.
 
 Pagination reads live data, not an immutable snapshot. A transaction written
 between two page reads can shift rows onto an adjacent page. When deletions empty

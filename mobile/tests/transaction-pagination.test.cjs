@@ -144,26 +144,37 @@ test('few pages show every number and hide the pager when there are none', async
 /* Previous / next                                                     */
 /* ------------------------------------------------------------------ */
 
-test('previous is disabled on page one and next reports one page forward', async () => {
+test('previous is absent on page one and next reports one page forward', async () => {
   const { harness, onSelectPage } = mountPagination({ currentPage: 1, totalPages: 99 });
   await harness.mount();
 
-  assert.equal(harness.byTestID('page-prev').props.disabled, true);
-  assert.equal(harness.byTestID('page-next').props.disabled, false);
+  assert.equal(harness.byTestID('page-prev'), undefined);
+  assert.ok(harness.byTestID('page-next'));
 
   await harness.pressTestID('page-next');
   assert.deepEqual(onSelectPage, [2]);
 });
 
-test('next is disabled on the last page and previous reports one page back', async () => {
+test('next is absent on the last page and previous reports one page back', async () => {
   const { harness, onSelectPage } = mountPagination({ currentPage: 99, totalPages: 99 });
   await harness.mount();
 
-  assert.equal(harness.byTestID('page-next').props.disabled, true);
-  assert.equal(harness.byTestID('page-prev').props.disabled, false);
+  assert.equal(harness.byTestID('page-next'), undefined);
+  assert.ok(harness.byTestID('page-prev'));
 
   await harness.pressTestID('page-prev');
   assert.deepEqual(onSelectPage, [98]);
+});
+
+test('interior pages show both controls with correct targets', async () => {
+  const { harness, onSelectPage } = mountPagination({ currentPage: 5, totalPages: 99 });
+  await harness.mount();
+
+  assert.ok(harness.byTestID('page-prev'));
+  assert.ok(harness.byTestID('page-next'));
+  await harness.pressTestID('page-prev');
+  await harness.pressTestID('page-next');
+  assert.deepEqual(onSelectPage, [4, 6]);
 });
 
 test('a numbered token reports exactly its own page', async () => {
@@ -182,7 +193,7 @@ test('a numbered token reports exactly its own page', async () => {
   assert.deepEqual(onSelectPage, [6, 4]);
 });
 
-test('disabled pager still marks controls unavailable', async () => {
+test('loading disables the controls that still exist', async () => {
   const { harness, onSelectPage } = mountPagination({
     currentPage: 5,
     totalPages: 99,
@@ -195,6 +206,14 @@ test('disabled pager still marks controls unavailable', async () => {
   assert.equal(harness.byTestID('page-4').props.disabled, true);
   assert.equal(harness.byTestID('page-ellipsis-right').props.disabled, true);
   assert.deepEqual(onSelectPage, []);
+});
+
+test('loading keeps the next control on page one and hides the absent previous', async () => {
+  const { harness } = mountPagination({ currentPage: 1, totalPages: 99, disabled: true });
+  await harness.mount();
+
+  assert.equal(harness.byTestID('page-prev'), undefined);
+  assert.equal(harness.byTestID('page-next').props.disabled, true);
 });
 
 /* ------------------------------------------------------------------ */

@@ -140,13 +140,16 @@ def _browser_where(
         clause += " AND t.amount <= ?"
         params.append(max_amount)
 
-    keyword = (search or "").strip().lower()
+    keyword = (search or "").strip()
     if keyword:
+        # Fold both sides in SQL. Python-side lowercasing would disagree with
+        # SQLite's ASCII-only LOWER for non-ASCII text and make some rows
+        # unfindable, so the bound pattern is lowered by the database too.
         pattern = f"%{escape_like(keyword)}%"
         clause += (
-            " AND (LOWER(COALESCE(t.note, '')) LIKE ? ESCAPE '!'"
-            " OR LOWER(COALESCE(c.name, '')) LIKE ? ESCAPE '!'"
-            " OR LOWER(COALESCE(t.asset_name, '')) LIKE ? ESCAPE '!')"
+            " AND (LOWER(COALESCE(t.note, '')) LIKE LOWER(?) ESCAPE '!'"
+            " OR LOWER(COALESCE(c.name, '')) LIKE LOWER(?) ESCAPE '!'"
+            " OR LOWER(COALESCE(t.asset_name, '')) LIKE LOWER(?) ESCAPE '!')"
         )
         params.extend([pattern, pattern, pattern])
 

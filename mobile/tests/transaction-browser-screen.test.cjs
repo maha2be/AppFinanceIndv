@@ -2,20 +2,19 @@
  * Screen-level wiring tests for the transaction browser and its Home/Reports
  * entry points.
  *
- * The real pure helpers from `utils/` are loaded by the harness. The pagination
- * child is replaced by a minimal contract double that only exposes page buttons
- * calling `onSelectPage`; strip tokens and the jump sheet are covered by
- * `transaction-pagination.test.cjs` against the real component.
+ * The real pure helpers from `utils/` and the real SectionHeader are loaded by
+ * the harness. The pagination child is replaced by a minimal contract double
+ * that only exposes page buttons calling `onSelectPage`; strip tokens and the
+ * jump sheet are covered by `transaction-pagination.test.cjs`.
  */
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const test = require('node:test');
 
-const { createHarness } = require('./support/screen-harness.cjs');
+const {
+  createHarness,
+  loadComponentModule,
+} = require('./support/screen-harness.cjs');
 
-const root = path.join(__dirname, '..');
-const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const BROWSER_PATH = 'app/transactions.tsx';
@@ -55,6 +54,26 @@ function deferred() {
     resolve = res;
   });
   return { promise, resolve };
+}
+
+/**
+ * FlatList stub mirroring the real render path: the screen now supplies
+ * ListHeaderComponent/ListEmptyComponent/ListFooterComponent and renderItem
+ * instead of JSX children.
+ */
+function FlatListStub(props = {}) {
+  const renderComponent = (component) => {
+    if (component === undefined || component === null) return null;
+    return typeof component === 'function' ? component() : component;
+  };
+  const header = renderComponent(props.ListHeaderComponent);
+  const body = Array.isArray(props.data) && props.data.length > 0
+    ? props.data.map((item, index) => (
+        typeof props.renderItem === 'function' ? props.renderItem({ item, index }) : null
+      ))
+    : renderComponent(props.ListEmptyComponent);
+  const footer = renderComponent(props.ListFooterComponent);
+  return node('FlatList', { testID: props.testID, children: [header, body, footer] });
 }
 
 /**
@@ -99,13 +118,36 @@ function PaginationDouble(props = {}) {
     node('Pressable', {
       testID: 'page-next',
       disabled: disabled || currentPage >= totalPages,
-      accessibilityRole: 'button',
       accessibilityState: { disabled: disabled || currentPage >= totalPages },
       onPress: () => onSelectPage(currentPage + 1),
     }),
   ];
 
   return node('View', { children: controls });
+}
+
+// The production SectionHeader, so the underline assertion is not a regex.
+const RealSectionHeader = loadComponentModule('components/ui/SectionHeader.tsx', {
+  modules: {
+    react: {},
+    'react-native': {
+      Pressable: 'Pressable',
+      Text: 'Text',
+      View: 'View',
+      StyleSheet: { create: (styles) => styles },
+    },
+  },
+  exportName: 'SectionHeader',
+});
+
+function flattenStyle(style) {
+  if (Array.isArray(style)) {
+    return style.reduce(
+      (merged, entry) => ({ ...merged, ...flattenStyle(entry) }),
+      {}
+    );
+  }
+  return style && typeof style === 'object' ? style : {};
 }
 
 function createBrowserHarness({ handler }) {
@@ -131,7 +173,7 @@ function createBrowserHarness({ handler }) {
   const modules = {
     'expo-router': { router, useLocalSearchParams: () => ({}) },
     'react-native': {
-      FlatList: stub('FlatList'),
+      FlatList: FlatListStub,
       ScrollView: stub('ScrollView'),
       ActivityIndicator: stub('ActivityIndicator'),
       TextInput: stub('TextInput'),
@@ -142,17 +184,21 @@ function createBrowserHarness({ handler }) {
     [/components\/ui\/Screen$/, { Screen: stub('View') }],
     [/components\/ui\/Input$/, { Input: stub('Input') }],
     [/components\/ui\/Button$/, { Button: stub('Pressable') }],
-    [/components\/ui\/SectionHeader$/, { SectionHeader: stub('View') }],
+    [/components\/ui\/SectionHeader$/, { SectionHeader: RealSectionHeader }],
     [/components\/ui\/Sheet$/, {
       Sheet: (props = {}) => (props.visible ? node('View', props) : null),
     }],
-    [/components\/ui\/EmptyState$/, { EmptyState: stub('View') }],
+    [/components\/ui\/EmptyState$/, { EmptyState: (props = {}) => node('EmptyState', props) }],
     [/components\/ui\/ErrorState$/, { ErrorState: stub('View') }],
     [/components\/ui\/Skeleton$/, { SkeletonRows: stub('View'), Skeleton: stub('View') }],
     [/components\/ui\/Progress$/, { Progress: stub('View') }],
     [/components\/ui\/Amount$/, { Amount: stub('View') }],
     [/components\/ui\/FadeIn$/, { FadeIn: stub('View') }],
-    [/components\/TransactionCard$/, { TransactionCard: stub('View') }],
+    [/components\/TransactionCard$/, {
+      TransactionCard: (props = {}) => node('TransactionCard', {
+        transaction: props.transaction,
+      }),
+    }],
     [/components\/transactions\/TransactionFilters$/, {
       // Filter-sheet double: exposes one control that applies a fixed draft so
       // the screen's apply wiring can be exercised without the real sheet.
@@ -205,32 +251,145 @@ function assertProp(testID, harness, key, expected) {
 /* Home and Reports entry points                                       */
 /* ------------------------------------------------------------------ */
 
-test('home preview keeps its ten-row request', () => {
-  const source = read('app/(tabs)/index.tsx');
-  assert.match(source, /getTransactions\(\{\s*limit:\s*10\s*\}\)/);
+function reportFixture(startDate = '2026-01-01', endDate = '2026-01-31') {
+  return {
+    title: 'Laporan Bulanan',
+    start_date: startDate,
+    end_date: endDate,
+    total_income: 1_000_000,
+    total_expense: 250_000,
+    total_investment: 100_000,
+    net: 650_000,
+    average_expense: 10_000,
+    investment_percentage: 10,
+    top_expense_categories: [],
+  };
+}
+
+function createTabsHarness({ componentPath, transactions, report, handlers = {} }) {
+  const pushes = [];
+  const transactionCalls = [];
+  const rows = transactions || Array.from({ length: 11 }, (_, index) => transaction(index + 1));
+
+  const transactionApi = {
+    // Faithful server stub: it only ever returns the requested limit, so a
+    // screen that drops `limit` renders all 11 fixture rows and fails.
+    getTransactions: async (params = {}) => {
+      transactionCalls.push(params);
+      const limit = typeof params.limit === 'number' ? params.limit : rows.length;
+      return rows.slice(0, limit);
+    },
+  };
+  const reportApi = {
+    getDailyReport: async () => report || reportFixture(),
+    getWeeklyReport: async () => report || reportFixture(),
+    getMonthlyReport: async () => report || reportFixture(),
+  };
+  const authApi = {
+    getProfile: async () => ({ id: 1, first_name: 'Tester', timezone: 'Asia/Jakarta', currency: 'IDR' }),
+  };
+  const debtApi = {
+    getSummary: async () => ({ total_debt: 0, total_receivable: 0 }),
+  };
+  const router = {
+    push: (...args) => pushes.push(args),
+    replace: () => {},
+    back: () => {},
+  };
+
+  const modules = {
+    'expo-router': { router, useLocalSearchParams: () => ({}) },
+  };
+
+  const fallback = [
+    [/components\/ui\/Screen$/, { Screen: stub('View') }],
+    [/components\/ui\/FadeIn$/, { FadeIn: stub('View') }],
+    [/components\/ui\/SectionHeader$/, { SectionHeader: RealSectionHeader }],
+    [/components\/ui\/Segmented$/, { Segmented: stub('View') }],
+    [/components\/ui\/Progress$/, { Progress: stub('View') }],
+    [/components\/ui\/Amount$/, { Amount: stub('View') }],
+    [/components\/ui\/Skeleton$/, { Skeleton: stub('View'), SkeletonRows: stub('View') }],
+    [/components\/ui\/EmptyState$/, { EmptyState: (props = {}) => node('EmptyState', props) }],
+    [/components\/ui\/ErrorState$/, { ErrorState: stub('View') }],
+    [/components\/ReportSummaryCard$/, { ReportSummaryCard: stub('View') }],
+    [/components\/QuickInputBar$/, { QuickInputBar: stub('View') }],
+    [/components\/DebtSummaryCard$/, { DebtSummaryCard: stub('View') }],
+    [/components\/TransactionCard$/, {
+      TransactionCard: (props = {}) => node('TransactionCard', {
+        transaction: props.transaction,
+      }),
+    }],
+    [/services\/reports$/, { reportApi }],
+    [/services\/transactions$/, { transactionApi }],
+    [/services\/auth$/, { authApi, describeApiError: () => 'Gagal memuat data.' }],
+    [/services\/debts$/, { debtApi }],
+  ];
+
+  const harness = createHarness({ componentPath, modules, moduleFallback: fallback });
+  return { harness, pushes, router, transactionCalls, rows };
+}
+
+function renderedTransactions(harness) {
+  return harness
+    .elements()
+    .filter((element) => element.type === 'TransactionCard')
+    .map((element) => element.props.transaction);
+}
+
+function underlineOfAction(harness, label) {
+  const action = harness.byLabel(label);
+  assert.ok(action, `${label} action must render`);
+  const text = (action.children || []).find((child) => child && child.type === 'Text');
+  assert.ok(text, `${label} action must render a text label`);
+  return flattenStyle(text.props.style).textDecorationLine;
+}
+
+function pressSectionAction(harness, label) {
+  const action = harness.byLabel(label);
+  assert.ok(action, `${label} action must render`);
+  assert.equal(typeof action.props.onPress, 'function');
+  action.props.onPress();
+}
+
+test('home requests ten rows, renders ten of eleven and opens the all-date browser', async () => {
+  const { harness, pushes, transactionCalls } = createTabsHarness({
+    componentPath: 'app/(tabs)/index.tsx',
+  });
+  await harness.mount();
+
+  assert.equal(transactionCalls.length >= 1, true);
+  assert.equal(transactionCalls[0].limit, 10);
+  const rows = renderedTransactions(harness);
+  assert.equal(rows.length, 10);
+  assert.deepEqual(rows.map((row) => row.id), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.equal(underlineOfAction(harness, 'Seluruh Transaksi'), 'underline');
+
+  pressSectionAction(harness, 'Seluruh Transaksi');
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0][0], '/transactions');
 });
 
-test('reports preview requests ten rows and leaves report aggregation alone', () => {
-  const source = read('app/(tabs)/reports.tsx');
-  assert.match(source, /getTransactions\(\{[\s\S]*?limit:\s*10\b/);
-  assert.doesNotMatch(source, /limit:\s*(?:[2-9]\d|[1-9]\d{2,})/);
-  assert.match(source, /reportApi\./);
-});
+test('reports requests ten rows for the report dates and opens that scope', async () => {
+  const report = reportFixture('2026-02-01', '2026-02-28');
+  const { harness, pushes, transactionCalls } = createTabsHarness({
+    componentPath: 'app/(tabs)/reports.tsx',
+    report,
+  });
+  await harness.mount();
 
-test('home exposes underlined Seluruh Transaksi navigation', () => {
-  const source = read('app/(tabs)/index.tsx');
-  assert.match(source, /actionLabel="Seluruh Transaksi"/);
-  assert.match(source, /actionUnderlined/);
-  assert.match(source, /router\.push\('\/transactions'\)/);
-});
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(transactionCalls[0])),
+    { start_date: '2026-02-01', end_date: '2026-02-28', limit: 10 }
+  );
+  assert.equal(renderedTransactions(harness).length, 10);
+  assert.equal(underlineOfAction(harness, 'Seluruh Transaksi'), 'underline');
 
-test('reports exposes underlined navigation carrying the report date range', () => {
-  const source = read('app/(tabs)/reports.tsx');
-  assert.match(source, /actionLabel="Seluruh Transaksi"/);
-  assert.match(source, /actionUnderlined/);
-  assert.match(source, /pathname:\s*['"]\/transactions['"]/);
-  assert.match(source, /start_date:\s*report\.start_date/);
-  assert.match(source, /end_date:\s*report\.end_date/);
+  pressSectionAction(harness, 'Seluruh Transaksi');
+  assert.equal(pushes.length, 1);
+  const payload = pushes[0][0];
+  assert.equal(payload.pathname, '/transactions');
+  assert.equal(payload.params.start_date, '2026-02-01');
+  assert.equal(payload.params.end_date, '2026-02-28');
 });
 
 /* ------------------------------------------------------------------ */
@@ -238,7 +397,10 @@ test('reports exposes underlined navigation carrying the report date range', () 
 /* ------------------------------------------------------------------ */
 
 test('browser requests page one with the fixed twenty-row contract', async () => {
-  const { harness, calls } = await mountBrowser({ handler: () => pageBody() });
+  const items = Array.from({ length: 20 }, (_, index) => transaction(index + 1));
+  const { harness, calls } = await mountBrowser({
+    handler: () => pageBody({ items }),
+  });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].page, 1);
   assert.equal(calls[0].sort, 'date_desc');
@@ -251,17 +413,26 @@ test('browser requests page one with the fixed twenty-row contract', async () =>
   assert.ok(harness.byTestID('result-range'));
   assert.ok(harness.byTestID('transaction-list'));
   assertProp('page-1', harness, 'accessibilityState', { selected: true, disabled: false });
+  const rendered = renderedTransactions(harness);
+  assert.equal(rendered.length, 20);
+  assert.equal(rendered[0].id, 1);
   const label = harness.texts().join(' ');
   assert.match(label, /Menampilkan 1-20 dari 45 transaksi/);
 });
 
 test('pagination child page selection fetches that page', async () => {
   const { harness, calls } = await mountBrowser({
-    handler: (params) => pageBody({ page: params.page, total: 45, total_pages: 3 }),
+    handler: (params) => pageBody({
+      page: params.page,
+      total: 45,
+      total_pages: 3,
+      items: [transaction(params.page * 100)],
+    }),
   });
   await harness.pressTestID('page-next');
   assert.equal(calls.at(-1).page, 2);
   assertProp('page-2', harness, 'accessibilityState', { selected: true, disabled: false });
+  assert.equal(renderedTransactions(harness)[0].id, 200);
 
   await harness.pressTestID('page-prev');
   assert.equal(calls.at(-1).page, 1);
@@ -393,11 +564,13 @@ test('repeated next taps dedupe while a page request is in flight', async () => 
   assert.equal(calls.at(-1).page, 2);
 });
 
-test('empty result keeps the honest zero label and no pager', async () => {
+test('empty result keeps the honest zero label, empty state and no pager', async () => {
   const { harness } = await mountBrowser({
     handler: () => pageBody({ total: 0, total_pages: 0, page: 1 }),
   });
   assert.match(harness.texts().join(' '), /Menampilkan 0 dari 0 transaksi/);
+  assert.equal(renderedTransactions(harness).length, 0);
+  assert.ok(harness.byType('EmptyState'), 'the empty state must render');
   assert.equal(harness.byTestID('page-prev'), undefined);
   assert.equal(harness.byTestID('page-next'), undefined);
 });

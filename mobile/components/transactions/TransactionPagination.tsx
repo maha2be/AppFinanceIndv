@@ -75,10 +75,10 @@ export function TransactionPagination({
     return null;
   }
 
-  const canGoPrev = safeCurrent > 1;
-  const canGoNext = safeCurrent < safeTotal;
-  const prevDisabled = disabled || !canGoPrev;
-  const nextDisabled = disabled || !canGoNext;
+  // The required strip is `1 2 3 ... 99` on page 1 and `1 ... 97 98 99` on the
+  // last page, so a boundary chevron is absent rather than shown dimmed.
+  const showPrev = safeCurrent > 1;
+  const showNext = safeCurrent < safeTotal;
 
   const openJumpSheet = () => {
     if (disabled) return;
@@ -207,21 +207,23 @@ export function TransactionPagination({
       ) : null}
 
       <View style={styles.bar}>
-        <Pressable
-          testID="page-prev"
-          onPress={() => handleSelectPage(safeCurrent - 1)}
-          disabled={prevDisabled}
-          accessibilityRole="button"
-          accessibilityLabel="Halaman sebelumnya"
-          accessibilityState={{ disabled: prevDisabled, busy: disabled }}
-          style={({ pressed }) => [
-            styles.navButton,
-            prevDisabled && styles.buttonDisabled,
-            pressed && !prevDisabled ? styles.buttonPressed : null,
-          ]}
-        >
-          <Ionicons name="chevron-back" size={18} color={Colors.ink} />
-        </Pressable>
+        {showPrev ? (
+          <Pressable
+            testID="page-prev"
+            onPress={() => handleSelectPage(safeCurrent - 1)}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel="Halaman sebelumnya"
+            accessibilityState={{ disabled, busy: disabled }}
+            style={({ pressed }) => [
+              styles.navButton,
+              disabled && styles.buttonDisabled,
+              pressed && !disabled ? styles.buttonPressed : null,
+            ]}
+          >
+            <Ionicons name="chevron-back" size={18} color={Colors.ink} />
+          </Pressable>
+        ) : null}
 
         <ScrollView
           ref={stripRef as any}
@@ -290,21 +292,23 @@ export function TransactionPagination({
           })}
         </ScrollView>
 
-        <Pressable
-          testID="page-next"
-          onPress={() => handleSelectPage(safeCurrent + 1)}
-          disabled={nextDisabled}
-          accessibilityRole="button"
-          accessibilityLabel="Halaman berikutnya"
-          accessibilityState={{ disabled: nextDisabled, busy: disabled }}
-          style={({ pressed }) => [
-            styles.navButton,
-            nextDisabled && styles.buttonDisabled,
-            pressed && !nextDisabled ? styles.buttonPressed : null,
-          ]}
-        >
-          <Ionicons name="chevron-forward" size={18} color={Colors.ink} />
-        </Pressable>
+        {showNext ? (
+          <Pressable
+            testID="page-next"
+            onPress={() => handleSelectPage(safeCurrent + 1)}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel="Halaman berikutnya"
+            accessibilityState={{ disabled, busy: disabled }}
+            style={({ pressed }) => [
+              styles.navButton,
+              disabled && styles.buttonDisabled,
+              pressed && !disabled ? styles.buttonPressed : null,
+            ]}
+          >
+            <Ionicons name="chevron-forward" size={18} color={Colors.ink} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );

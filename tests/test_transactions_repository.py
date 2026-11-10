@@ -552,3 +552,32 @@ def test_page_empty_filter_returns_zero_pages() -> None:
     page = list_transactions_page(connection, user_id=user_id, search="tidak pernah ada")
 
     assert page == TransactionPage(items=[], total=0, page=1, page_size=20, total_pages=0)
+
+
+def test_page_search_folds_case_on_both_sides() -> None:
+    """Fold the pattern in SQL, not Python, so ASCII case always matches.
+
+    SQLite folds ASCII letters only. Uppercase queries against non-ASCII text
+    work because both sides go through the same LOWER; full Unicode folding is a
+    PostgreSQL behaviour and is not promised for SQLite.
+    """
+
+    from finance_core.db.transactions import list_transactions_page
+
+    connection = setup_connection()
+    user = get_or_create_user(connection, telegram_user_id=9010)
+    create_transaction(
+        connection,
+        user_id=user.id,
+        type="expense",
+        category_id=None,
+        amount=1000,
+        note="Kopi ÉCLAIR",
+        asset_name=None,
+        transaction_date="2026-05-10",
+    )
+    connection.commit()
+
+    assert list_transactions_page(connection, user_id=user.id, search="KOPI ÉCLAIR").total == 1
+    assert list_transactions_page(connection, user_id=user.id, search="ÉCLAIR").total == 1
+    assert list_transactions_page(connection, user_id=user.id, search="KOPI").total == 1

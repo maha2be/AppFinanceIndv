@@ -299,6 +299,24 @@ function loadMobileModule(specifier, fromDir = mobileRoot, stubs = {}) {
   return exported;
 }
 
+/**
+ * Load a real presentational component module (no hooks) with the harness host
+ * components. Used when a screen test must assert the production markup of a
+ * small shared component such as SectionHeader instead of stubbing it.
+ */
+function loadComponentModule(componentPath, options = {}) {
+  const hooks = createHooks();
+  const host = createHostComponents();
+  return loadComponent(
+    componentPath,
+    options.modules || {},
+    hooks,
+    host.h,
+    options.moduleFallback || [],
+    options.exportName
+  );
+}
+
 function loadComponent(componentPath, modules, hooks, h, moduleFallback = [], exportName) {
   const file = path.join(mobileRoot, componentPath);
   const source = fs.readFileSync(file, 'utf8');
@@ -621,6 +639,7 @@ function createHarness({ componentPath, modules, props = {}, mountProps, moduleF
 
 module.exports = {
   createHarness,
+  loadComponentModule,
   loadTsModule,
   loadMobileModule,
   mobileRoot,
