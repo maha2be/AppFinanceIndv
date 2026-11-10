@@ -5,6 +5,43 @@ date, note or investment asset, or confirm deletion. The transaction type stays
 unchanged. Debt/payment-generated cash rows are read-only here; use the debt
 screen to keep balances synchronized.
 
+## Browsing transactions
+
+Home shows the 10 most recent transactions. Reports shows the 10 most recent
+transactions inside the selected period while its totals and category breakdown
+still aggregate every transaction in that period. Both screens link with an
+underlined `Seluruh Transaksi` action to the transaction browser.
+
+The browser reads one server-filtered page of 20 at a time through
+`GET /api/transactions/page`. It searches notes, category names and asset names,
+filters by inclusive date range, type, category and amount bounds, and sorts by
+transaction date or amount in either direction. Searching happens on the server,
+so a match on page 40 is found without downloading pages 1 to 39.
+
+Navigation uses first/last/current-neighbour page buttons, previous/next, and an
+ellipsis that opens a numeric jump popup. The page strip follows the same rules at
+every width: for 99 pages, page 1 shows `1 2 3 ... 99`, page 5 shows
+`1 ... 4 5 6 ... 99`, and page 99 shows `1 ... 97 98 99`.
+
+### Page contract
+
+- `items` are at most 20 transactions for the authenticated owner.
+- `total` counts only rows matching the same filters, never another owner's rows.
+- `page` is the effective page after clamping; asking for page 909 of a 3-page
+  result returns page 3 and its rows.
+- `page_size` is always 20 and cannot be raised by the client.
+- `total_pages` is `ceil(total / 20)`, or `0` when nothing matches.
+- Invalid dates, reversed ranges, unknown sort values or a page below 1 return
+  HTTP 422. Text is literal: `%`, `_` and `!` are data, not wildcards.
+
+Pagination reads live data, not an immutable snapshot. A transaction written
+between two page reads can shift rows onto an adjacent page. When deletions empty
+the requested page, the backend recounts once and returns the new last page so the
+app never shows a blank page that still has results.
+
+The older `GET /api/transactions` array response is unchanged for installed app
+versions and the Telegram bot. The browser endpoint is additive.
+
 Every effective edit and successful deletion records an owner-scoped snapshot
 with time, action, source and reason. Edits retain before/after values; deletions
 retain the previous values with no after snapshot. Saving unchanged fields does
@@ -82,6 +119,15 @@ Physical-device validation remains separate from automated tests:
    not submit twice, and failed requests do not show success.
 7. With SwiftKey visible, reach every edit field and the save button. Check back
    navigation and history pagination on the target Android device.
+8. Open `Seluruh Transaksi` from Home and from a monthly report. Confirm the
+   report dates appear as the active filter and that report totals still include
+   transactions beyond the 10-row preview.
+9. On a narrow screen with large text, check the numbered strip, both ellipsis
+   triggers, the jump popup with its enter-glyph button above the keyboard,
+   invalid input, and previous/next at the first and last page.
+10. Change search, filters and sort quickly. Confirm the list never shows rows
+    labelled with filters they do not match, an offline retry keeps the query,
+    and returning from a transaction detail restores the same page.
 
 ### Automated verification
 

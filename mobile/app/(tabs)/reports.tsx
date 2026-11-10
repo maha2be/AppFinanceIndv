@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Fonts, Space, Type } from '../../utils/theme';
 import { PeriodReport, Transaction } from '../../types';
 import { ReportSummaryCard } from '../../components/ReportSummaryCard';
@@ -61,7 +62,7 @@ export default function ReportsScreen() {
       const txs = await transactionApi.getTransactions({
         start_date: reportData.start_date,
         end_date: reportData.end_date,
-        limit: 50,
+        limit: 10,
       });
       if (!mountedRef.current || seq !== requestSeqRef.current) {
         return;
@@ -139,9 +140,22 @@ export default function ReportsScreen() {
 
       <FadeIn delay={180}>
         <SectionHeader
-          title={`Daftar transaksi (${transactions.length})`}
-          actionLabel="Riwayat perubahan"
-          onAction={() => router.push('/transaction-history')}
+          title="Pratinjau transaksi (maks. 10 terbaru)"
+          actionLabel="Seluruh Transaksi"
+          actionUnderlined
+          onAction={() =>
+            router.push(
+              report
+                ? {
+                    pathname: '/transactions',
+                    params: {
+                      start_date: report.start_date,
+                      end_date: report.end_date,
+                    },
+                  }
+                : '/transactions'
+            )
+          }
         />
         {transactions.length === 0 ? (
           <EmptyState
@@ -162,6 +176,19 @@ export default function ReportsScreen() {
             ))}
           </View>
         )}
+
+        <Pressable
+          onPress={() => router.push('/transaction-history')}
+          disabled={false}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Riwayat perubahan"
+          style={({ pressed }) => [styles.auditLinkRow, pressed ? styles.pressed : null]}
+        >
+          <Ionicons name="time-outline" size={16} color={Colors.inkSoft} />
+          <Text style={styles.auditLinkText}>Riwayat perubahan</Text>
+          <Ionicons name="chevron-forward" size={15} color={Colors.inkMuted} />
+        </Pressable>
       </FadeIn>
     </Screen>
   );
@@ -203,5 +230,23 @@ const styles = StyleSheet.create({
   categoryPct: {
     ...Type.micro,
     letterSpacing: 0,
+  },
+  auditLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    minHeight: 44,
+    paddingVertical: Space.sm,
+    marginTop: Space.xs,
+  },
+  auditLinkText: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.inkSoft,
+    flex: 1,
+  },
+  pressed: {
+    opacity: 0.85,
   },
 });

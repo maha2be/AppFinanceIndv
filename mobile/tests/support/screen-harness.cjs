@@ -255,7 +255,51 @@ function loadTsModule(file, requireFor) {
     : sandbox.exports;
 }
 
-function loadComponent(componentPath, modules, hooks, h) {
+const mobileModuleCache = new Map();
+
+function resolveMobileFile(fromDir, specifier) {
+  const base = path.resolve(fromDir, specifier);
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    path.join(base, 'index.ts'),
+    path.join(base, 'index.tsx'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Transpile and evaluate a real mobile module (TS or TSX) in the VM.
+ *
+ * Relative imports are resolved from the importing file, so a screen test can
+ * fall back to the production pure helpers instead of reimplementing them. Only
+ * pure modules are loaded this way; components that need hooks or host stubs
+ * still come from the harness `modules` map.
+ */
+function loadMobileModule(specifier, fromDir = mobileRoot, stubs = {}) {
+  const file = resolveMobileFile(fromDir, specifier);
+  if (!file) {
+    throw new Error(`Cannot resolve ${specifier} from ${fromDir}`);
+  }
+  if (mobileModuleCache.has(file)) return mobileModuleCache.get(file);
+  const exported = loadTsModule(file, (name) => {
+    if (name.startsWith('.')) {
+      return loadMobileModule(name, path.dirname(file), stubs);
+    }
+    if (stubs[name] !== undefined) return stubs[name];
+    throw new Error(`Unexpected module in ${file}: ${name}`);
+  });
+  mobileModuleCache.set(file, exported);
+  return exported;
+}
+
+function loadComponent(componentPath, modules, hooks, h, moduleFallback = [], exportName) {
   const file = path.join(mobileRoot, componentPath);
   const source = fs.readFileSync(file, 'utf8');
   const javascript = ts.transpileModule(source, {
@@ -296,6 +340,14 @@ function loadComponent(componentPath, modules, hooks, h) {
   sandbox.h = h;
   sandbox.require = (name) => {
     if (modules[name] !== undefined) return modules[name];
+    for (const [matcher, value] of moduleFallback) {
+      if (matcher instanceof RegExp ? matcher.test(name) : name === matcher) {
+        return value;
+      }
+    }
+    if (/^\.\.?(?:\/\.\.)*\/utils\//.test(name)) {
+      return loadMobileModule(name, path.dirname(file));
+    }
     throw new Error(`Unexpected module in ${componentPath}: ${name}`);
   };
 
@@ -303,6 +355,9 @@ function loadComponent(componentPath, modules, hooks, h) {
   const exported = Object.keys(sandbox.module.exports).length
     ? sandbox.module.exports
     : sandbox.exports;
+  if (exportName && exported[exportName] !== undefined) {
+    return exported[exportName];
+  }
   return exported.default || exported.AppLockSettingsScreen || exported.DeleteAccountScreen;
 }
 
@@ -334,9 +389,10 @@ function collectText(node, output = []) {
   return output;
 }
 
-function createHarness({ componentPath, modules, props = {}, mountProps }) {
+function createHarness({ componentPath, modules, props = {}, mountProps, moduleFallback = [], exportName }) {
   const hooks = createHooks();
   const host = createHostComponents();
+  const focusCallbacks = [];
   const React = {
     useState: hooks.useState,
     useRef: hooks.useRef,
@@ -364,7 +420,12 @@ function createHarness({ componentPath, modules, props = {}, mountProps }) {
     },
     'expo-router': {
       router: { back() {}, replace() {}, push() {} },
-      useFocusEffect: (callback) => hooks.useEffect(callback, [callback]),
+      useFocusEffect: (callback) => {
+        focusCallbacks.length = 0;
+        focusCallbacks.push(callback);
+        return hooks.useEffect(callback, [callback]);
+      },
+      useLocalSearchParams: () => ({}),
     },
     '@expo/vector-icons': { Ionicons: host.Ionicons },
     '../utils/theme': {
@@ -390,7 +451,14 @@ function createHarness({ componentPath, modules, props = {}, mountProps }) {
       ? { ...baseModules[name], ...value }
       : value;
   }
-  const Component = loadComponent(componentPath, mergedModules, hooks, host.h);
+  const Component = loadComponent(
+    componentPath,
+    mergedModules,
+    hooks,
+    host.h,
+    moduleFallback,
+    exportName
+  );
   let currentProps = { ...props };
   let tree = null;
 
@@ -441,6 +509,14 @@ function createHarness({ componentPath, modules, props = {}, mountProps }) {
     return elements(tree).find((element) => element.type === type);
   }
 
+  function byTestID(testID) {
+    return elements(tree).find((element) => element.props.testID === testID);
+  }
+
+  function allByTestID(testID) {
+    return elements(tree).filter((element) => element.props.testID === testID);
+  }
+
   function allByType(type) {
     return elements(tree).filter((element) => element.type === type);
   }
@@ -469,6 +545,36 @@ function createHarness({ componentPath, modules, props = {}, mountProps }) {
     flush();
   }
 
+  async function pressTestID(testID) {
+    const target = byTestID(testID);
+    assert.ok(target, `control ${testID} must be rendered`);
+    assert.equal(target.props.disabled, false, `control ${testID} must be enabled`);
+    assert.equal(typeof target.props.onPress, 'function', `control ${testID} must be pressable`);
+    const result = target.props.onPress();
+    flush();
+    if (result && typeof result.then === 'function') {
+      await result;
+      await settle();
+    } else {
+      await settle();
+    }
+    return result;
+  }
+
+  function changeTestID(testID, value) {
+    const target = byTestID(testID);
+    assert.ok(target, `input ${testID} must be rendered`);
+    assert.equal(typeof target.props.onChangeText, 'function', `input ${testID} must accept text`);
+    target.props.onChangeText(value);
+    flush();
+  }
+
+  async function focus() {
+    for (const callback of focusCallbacks) callback();
+    flush();
+    await settle();
+  }
+
   function patternChange(label, pattern) {
     const target = byLabel(label);
     assert.ok(target, `pattern input ${label} must be rendered`);
@@ -495,12 +601,17 @@ function createHarness({ componentPath, modules, props = {}, mountProps }) {
     byLabel,
     byType,
     allByType,
+    byTestID,
+    allByTestID,
     mount,
     update,
     flush,
     settle,
     press,
+    pressTestID,
     change,
+    changeTestID,
+    focus,
     patternChange,
     unmount: hooks.unmount,
     refs: hooks.refs,
@@ -511,6 +622,7 @@ function createHarness({ componentPath, modules, props = {}, mountProps }) {
 module.exports = {
   createHarness,
   loadTsModule,
+  loadMobileModule,
   mobileRoot,
   tokenProxy,
 };

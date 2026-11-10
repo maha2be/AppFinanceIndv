@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Space, Type } from '../../utils/theme';
+import { Colors, Fonts, Space, Type } from '../../utils/theme';
 import { PeriodReport, Transaction, User, DebtSummary } from '../../types';
 import { ReportSummaryCard } from '../../components/ReportSummaryCard';
 import { QuickInputBar } from '../../components/QuickInputBar';
@@ -147,14 +147,15 @@ export default function DashboardScreen() {
       <FadeIn delay={240}>
         <SectionHeader
           title="Transaksi terbaru"
-          actionLabel="Riwayat perubahan"
-          onAction={() => router.push('/transaction-history')}
+          actionLabel="Seluruh Transaksi"
+          actionUnderlined
+          onAction={() => router.push('/transactions')}
         />
 
         {transactions.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
-            title="Belum ada transaksi hari ini"
+            title="Belum ada transaksi tercatat"
             message='Ketik "makan 25000" di kolom catat cepat untuk mulai mencatat.'
             actionLabel="Catat manual"
             onAction={() => router.push('/(tabs)/add')}
@@ -170,6 +171,19 @@ export default function DashboardScreen() {
             ))}
           </View>
         )}
+
+        <Pressable
+          onPress={() => router.push('/transaction-history')}
+          disabled={false}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Riwayat perubahan"
+          style={({ pressed }) => [styles.auditLinkRow, pressed ? styles.pressed : null]}
+        >
+          <Ionicons name="time-outline" size={16} color={Colors.inkSoft} />
+          <Text style={styles.auditLinkText}>Riwayat perubahan</Text>
+          <Ionicons name="chevron-forward" size={15} color={Colors.inkMuted} />
+        </Pressable>
       </FadeIn>
     </Screen>
   );
@@ -213,6 +227,21 @@ const styles = StyleSheet.create({
   recurringHint: {
     ...Type.caption,
     marginTop: 2,
+  },
+  auditLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    minHeight: 44,
+    paddingVertical: Space.sm,
+    marginTop: Space.xs,
+  },
+  auditLinkText: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.inkSoft,
+    flex: 1,
   },
   pressed: {
     opacity: 0.85,

@@ -6,11 +6,18 @@ interface SectionHeaderProps {
   title: string;
   actionLabel?: string;
   onAction?: () => void;
+  actionUnderlined?: boolean;
   style?: object;
 }
 
 /** Section title with an optional text action on the right. */
-export function SectionHeader({ title, actionLabel, onAction, style }: SectionHeaderProps) {
+export function SectionHeader({
+  title,
+  actionLabel,
+  onAction,
+  actionUnderlined = false,
+  style,
+}: SectionHeaderProps) {
   return (
     <View style={[styles.row, style]}>
       <Text style={styles.title} accessibilityRole="header">
@@ -24,7 +31,9 @@ export function SectionHeader({ title, actionLabel, onAction, style }: SectionHe
           accessibilityRole="button"
           accessibilityLabel={actionLabel}
         >
-          <Text style={styles.actionText}>{actionLabel}</Text>
+          <Text style={[styles.actionText, actionUnderlined && styles.actionTextUnderlined]}>
+            {actionLabel}
+          </Text>
         </Pressable>
       ) : null}
     </View>
@@ -57,5 +66,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: Colors.inkSoft,
+  },
+  actionTextUnderlined: {
+    textDecorationLine: 'underline',
   },
 });

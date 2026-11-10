@@ -394,3 +394,199 @@ def test_row_iterates_over_values_like_sqlite_row(postgres_url) -> None:
     # sqlite3.Row membership tests values, not names.
     assert (7 in pg_row) is (7 in lite_row) is True
     assert ("a" in pg_row) is ("a" in lite_row) is False
+
+
+def _browser_sort(rows, sort):
+    from datetime import date as _date
+
+    def ordinal(row):
+        return _date.fromisoformat(row["transaction_date"]).toordinal()
+
+    if sort == "date_desc":
+        return sorted(rows, key=lambda row: (ordinal(row), row["id"]), reverse=True)
+    if sort == "date_asc":
+        return sorted(rows, key=lambda row: (ordinal(row), row["id"]))
+    if sort == "amount_desc":
+        return sorted(
+            rows, key=lambda row: (row["amount"], ordinal(row), row["id"]), reverse=True
+        )
+    return sorted(rows, key=lambda row: (row["amount"], -ordinal(row), -row["id"]))
+
+
+def test_postgres_browser_page_counts_sorts_and_escapes(postgres_url):
+    """The browser query keeps the same semantics on PostgreSQL as on SQLite."""
+
+    from finance_core.db.connection import connect_url
+    from finance_core.db.migrations import run_migrations
+    from finance_core.db.transactions import (
+        count_transactions,
+        list_transactions_page,
+    )
+    from finance_core.db.users import create_mobile_user
+
+    connection = connect_url(postgres_url)
+    try:
+        run_migrations(connection)
+        owner = create_mobile_user(
+            connection, email="browser_pg@example.com", password_hash="unused"
+        )
+        other = create_mobile_user(
+            connection, email="browser_pg_other@example.com", password_hash="unused"
+        )
+
+        from finance_core.db.transactions import create_transaction
+
+        dates = ["2026-01-03", "2026-01-02", "2026-01-01"]
+        amounts = [10_000, 20_000, 10_000]
+        notes = [
+            None,
+            "Diskon 50% akhir tahun",
+            "kode_A1 khusus",
+            "promo!! seru",
+        ]
+        created = []
+        seeded_notes = []
+        for index in range(23):
+            note = notes[index % 4] if index % 7 else None
+            seeded_notes.append(note)
+            created.append(
+                create_transaction(
+                    connection,
+                    user_id=owner.id,
+                    type="expense",
+                    category_id=None,
+                    amount=amounts[index % 3],
+                    note=note,
+                    asset_name=None if index % 5 == 0 else "Dompet Digital",
+                    transaction_date=dates[index % 3],
+                )
+            )
+        for index in range(2):
+            create_transaction(
+                connection,
+                user_id=other.id,
+                type="expense",
+                category_id=None,
+                amount=1_000_000 + index,
+                note="Rahasia lain",
+                asset_name=None,
+                transaction_date="2026-01-02",
+            )
+        connection.commit()
+
+        assert count_transactions(connection, user_id=owner.id) == 23
+        assert count_transactions(connection, user_id=other.id) == 2
+
+        first = list_transactions_page(connection, user_id=owner.id, page=1)
+        second = list_transactions_page(connection, user_id=owner.id, page=2)
+        assert (first.total, first.page_size, first.total_pages) == (23, 20, 2)
+        assert (second.total, second.total_pages) == (23, 2)
+        assert [len(first.items), len(second.items)] == [20, 3]
+
+        collapsed = list_transactions_page(connection, user_id=owner.id, page=99)
+        assert collapsed.page == 2
+        assert len(collapsed.items) == 3
+
+        for sort in ("date_desc", "date_asc", "amount_desc", "amount_asc"):
+            expected = [row["id"] for row in _browser_sort(
+                [
+                    {
+                        "id": item.id,
+                        "amount": item.amount,
+                        "transaction_date": item.transaction_date,
+                    }
+                    for item in created
+                ],
+                sort,
+            )]
+            collected = []
+            for page in (1, 2):
+                collected.extend(
+                    item.id
+                    for item in list_transactions_page(
+                        connection, user_id=owner.id, page=page, sort=sort
+                    ).items
+                )
+            assert collected == expected, sort
+
+        # Literal metacharacters: each pattern matches only rows whose literal
+        # note text contains it, never every row like a wildcard would.
+        def note_matches(fragment):
+            return sum(1 for note in seeded_notes if note and fragment in note)
+
+        assert count_transactions(connection, user_id=owner.id, search="%") == note_matches("%")
+        assert count_transactions(connection, user_id=owner.id, search="_") == note_matches("_")
+        assert count_transactions(connection, user_id=owner.id, search="!") == note_matches("!")
+        assert count_transactions(connection, user_id=owner.id, search="50%") == note_matches("50%")
+        assert note_matches("%") >= 1 and note_matches("%") < 23
+        assert count_transactions(connection, user_id=owner.id, search="' OR 1=1 --") == 0
+        escaped = list_transactions_page(connection, user_id=owner.id, search="kode_A1")
+        assert escaped.total == note_matches("kode_A1")
+        assert escaped.items[0].note == "kode_A1 khusus"
+
+        # Owner isolation holds for both count and rows on PostgreSQL too.
+        assert count_transactions(connection, user_id=other.id, search="kode") == 0
+        other_page = list_transactions_page(connection, user_id=other.id)
+        assert other_page.total == 2
+        assert all(item.user_id == other.id for item in other_page.items)
+    finally:
+        connection.close()
+
+
+def test_postgres_api_page_endpoint_fixed_size_and_literal_search(pg_client):
+    """The route keeps a fixed 20-row page and treats LIKE text literally."""
+
+    created = []
+    for index in range(22):
+        response = pg_client.post(
+            "/api/transactions",
+            json={
+                "type": "expense",
+                "category_name": "Makan & Minum",
+                "amount": 1_000 + (index % 3) * 1_000,
+                "note": (
+                    "Diskon 50% akhir tahun"
+                    if index == 3
+                    else ("kode_A1 khusus" if index == 4 else f"catatan {index}")
+                ),
+                "transaction_date": f"2026-01-{(index % 3) + 1:02d}",
+            },
+        )
+        assert response.status_code == 201, response.text
+        created.append(response.json())
+
+    first = pg_client.get("/api/transactions/page", params={"page": 1})
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["total"] == 22
+    assert body["page_size"] == 20
+    assert body["total_pages"] == 2
+    assert len(body["items"]) == 20
+
+    second = pg_client.get("/api/transactions/page", params={"page": 2}).json()
+    assert len(second["items"]) == 2
+    all_ids = [item["id"] for item in body["items"] + second["items"]]
+    assert len(all_ids) == len(set(all_ids)) == 22
+
+    oversized = pg_client.get(
+        "/api/transactions/page", params={"page": 1, "page_size": 100}
+    ).json()
+    assert oversized["page_size"] == 20
+    assert len(oversized["items"]) == 20
+
+    assert pg_client.get(
+        "/api/transactions/page", params={"q": "%"}
+    ).json()["total"] == 1
+    assert pg_client.get(
+        "/api/transactions/page", params={"q": "_"}
+    ).json()["total"] == 1
+    assert pg_client.get(
+        "/api/transactions/page", params={"q": "' OR 1=1 --"}
+    ).json()["total"] == 0
+
+    oldest = pg_client.get(
+        "/api/transactions/page", params={"sort": "date_asc", "page": 1}
+    ).json()["items"]
+    assert [item["transaction_date"] for item in oldest] == sorted(
+        item["transaction_date"] for item in oldest
+    )

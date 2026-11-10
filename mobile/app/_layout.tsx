@@ -117,6 +117,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="debts" options={{ headerShown: false }} />
         <Stack.Screen name="recurring" options={{ headerShown: false }} />
+        <Stack.Screen name="transactions" options={{ headerShown: false }} />
         <Stack.Screen name="transaction/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="transaction-history" options={{ headerShown: false }} />
         <Stack.Screen name="change-password" options={{ headerShown: false }} />
