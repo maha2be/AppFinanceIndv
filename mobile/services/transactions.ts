@@ -3,6 +3,8 @@ import {
   QuickInputPreview,
   Transaction,
   TransactionHistoryEntry,
+  TransactionPage,
+  TransactionPageQuery,
   TransactionType,
   TransactionUpdatePayload,
 } from '../types';
@@ -16,6 +18,12 @@ export const transactionApi = {
     offset?: number;
   }): Promise<Transaction[]> {
     const res = await api.get<Transaction[]>('/api/transactions', { params });
+    return res.data;
+  },
+
+  /** One filtered page of 20; the backend owns the page size. */
+  async getTransactionPage(params: TransactionPageQuery): Promise<TransactionPage> {
+    const res = await api.get<TransactionPage>('/api/transactions/page', { params });
     return res.data;
   },
 

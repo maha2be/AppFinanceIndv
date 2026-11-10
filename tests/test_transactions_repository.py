@@ -9,6 +9,7 @@ from finance_core.db.connection import connect
 from finance_core.db.migrations import init_db
 from finance_core.db.transactions import (
     Transaction,
+    TransactionPage,
     count_transactions_by_type,
     create_transaction,
     delete_transaction,
@@ -380,3 +381,174 @@ def test_transaction_context_manager_rolls_back_on_exception(tmp_path) -> None:
 
     assert list_transactions(connection, user_id=user.id) == []
     connection.close()
+
+
+# --- Paginated transaction browser -------------------------------------------
+
+def _seed_browser_rows(connection: sqlite3.Connection, telegram_user_id: int) -> int:
+    """Create 45 transactions with repeated dates, amounts and missing fields."""
+
+    user = get_or_create_user(connection, telegram_user_id=telegram_user_id)
+    seed_default_categories(connection, user.id)
+    category_id = connection.execute(
+        "SELECT id FROM categories WHERE user_id = ? AND type = 'expense'"
+        " ORDER BY id LIMIT 1",
+        (user.id,),
+    ).fetchone()[0]
+    for index in range(45):
+        create_transaction(
+            connection,
+            user_id=user.id,
+            type="expense" if index % 3 else "income",
+            category_id=None if index % 7 == 0 else category_id,
+            amount=1000 + (index % 5) * 500,
+            note=None if index % 4 == 0 else f"catatan {index}",
+            asset_name=None if index % 6 else f"aset {index}",
+            transaction_date=f"2026-05-{1 + index % 28:02d}",
+        )
+    connection.commit()
+    return user.id
+
+
+def test_page_reads_twenty_rows_and_clamps_beyond_the_last_page() -> None:
+    from finance_core.db.transactions import list_transactions_page
+
+    connection = setup_connection()
+    user_id = _seed_browser_rows(connection, 9001)
+
+    first = list_transactions_page(connection, user_id=user_id, page=1, page_size=20)
+    second = list_transactions_page(connection, user_id=user_id, page=2, page_size=20)
+    last = list_transactions_page(connection, user_id=user_id, page=3, page_size=20)
+    beyond = list_transactions_page(connection, user_id=user_id, page=99, page_size=20)
+
+    assert (first.total, first.total_pages, first.page_size) == (45, 3, 20)
+    assert [len(page.items) for page in (first, second, last)] == [20, 20, 5]
+    assert beyond.page == 3 and len(beyond.items) == 5
+
+    first_ids = {item.id for item in first.items}
+    second_ids = {item.id for item in second.items}
+    last_ids = {item.id for item in last.items}
+    assert not (first_ids & second_ids) and not (second_ids & last_ids)
+    assert len(first_ids | second_ids | last_ids) == 45
+
+
+def test_page_count_and_rows_stay_owner_scoped() -> None:
+    from finance_core.db.transactions import list_transactions_page
+
+    connection = setup_connection()
+    owner_id = _seed_browser_rows(connection, 9002)
+    other = get_or_create_user(connection, telegram_user_id=9003)
+    create_transaction(
+        connection,
+        user_id=other.id,
+        type="expense",
+        category_id=None,
+        amount=12345,
+        note="milik orang lain",
+        asset_name=None,
+        transaction_date="2026-05-10",
+    )
+    connection.commit()
+
+    page = list_transactions_page(
+        connection, user_id=owner_id, page=1, page_size=20, search="milik orang lain"
+    )
+
+    assert page.total == 0
+    assert page.items == []
+    assert page.total_pages == 0
+    assert page.page == 1
+
+
+def test_page_filters_by_text_type_amount_and_dates_together() -> None:
+    from finance_core.db.transactions import list_transactions_page
+
+    connection = setup_connection()
+    user_id = _seed_browser_rows(connection, 9004)
+
+    found = list_transactions_page(
+        connection,
+        user_id=user_id,
+        search="  CATATAN 1  ",
+        start_date="2026-05-01",
+        end_date="2026-05-28",
+        sort="date_asc",
+    )
+    assert found.total > 0
+    for item in found.items:
+        assert (item.note or "").lower().find("catatan 1") >= 0
+
+    incomes = list_transactions_page(
+        connection, user_id=user_id, transaction_type="income", page_size=20
+    )
+    assert incomes.total == 15
+    assert all(item.type == "income" for item in incomes.items)
+
+    bounded = list_transactions_page(
+        connection, user_id=user_id, min_amount=2000, max_amount=2500
+    )
+    assert bounded.total > 0
+    assert all(2000 <= item.amount <= 2500 for item in bounded.items)
+
+
+def test_page_search_treats_like_wildcards_as_literal_text() -> None:
+    from finance_core.db.transactions import list_transactions_page
+
+    connection = setup_connection()
+    user = get_or_create_user(connection, telegram_user_id=9005)
+    for note in ("diskon 50% hari ini", "diskon 5000 hari ini", "pakai_kartu"):
+        create_transaction(
+            connection,
+            user_id=user.id,
+            type="expense",
+            category_id=None,
+            amount=1000,
+            note=note,
+            asset_name=None,
+            transaction_date="2026-05-10",
+        )
+    connection.commit()
+
+    percent = list_transactions_page(connection, user_id=user.id, search="50%")
+    underscore = list_transactions_page(connection, user_id=user.id, search="ai_ka")
+
+    assert [item.note for item in percent.items] == ["diskon 50% hari ini"]
+    assert [item.note for item in underscore.items] == ["pakai_kartu"]
+
+
+def test_page_sorting_is_stable_and_allowlisted() -> None:
+    from finance_core.db.transactions import list_transactions_page
+
+    connection = setup_connection()
+    user_id = _seed_browser_rows(connection, 9006)
+
+    newest = list_transactions_page(connection, user_id=user_id, sort="date_desc")
+    oldest = list_transactions_page(connection, user_id=user_id, sort="date_asc")
+    largest = list_transactions_page(connection, user_id=user_id, sort="amount_desc")
+    smallest = list_transactions_page(connection, user_id=user_id, sort="amount_asc")
+    injected = list_transactions_page(
+        connection, user_id=user_id, sort="amount DESC; DROP TABLE transactions"
+    )
+
+    assert [item.transaction_date for item in newest.items] == sorted(
+        (item.transaction_date for item in newest.items), reverse=True
+    )
+    assert oldest.items[0].transaction_date <= newest.items[0].transaction_date
+    assert [item.amount for item in largest.items] == sorted(
+        (item.amount for item in largest.items), reverse=True
+    )
+    assert [item.amount for item in smallest.items] == sorted(
+        item.amount for item in smallest.items
+    )
+    assert [item.id for item in injected.items] == [item.id for item in newest.items]
+
+
+def test_page_empty_filter_returns_zero_pages() -> None:
+    from finance_core.db.transactions import list_transactions_page
+
+    connection = setup_connection()
+    user_id = _seed_browser_rows(connection, 9007)
+
+    page = list_transactions_page(connection, user_id=user_id, search="tidak pernah ada")
+
+    assert page == TransactionPage(items=[], total=0, page=1, page_size=20, total_pages=0)

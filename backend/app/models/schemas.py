@@ -8,6 +8,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 TransactionTypeValue = Literal["income", "expense", "investment"]
+TransactionSortValue = Literal["date_desc", "date_asc", "amount_desc", "amount_asc"]
 DebtTypeValue = Literal["debt", "receivable"]
 DebtStatusValue = Literal["active", "settled"]
 
@@ -173,6 +174,20 @@ class TransactionResponse(BaseModel):
     transaction_date: str
     can_edit: bool
     can_delete: bool
+
+
+class TransactionPageResponse(BaseModel):
+    """One page of the transaction browser.
+
+    ``page`` is the effective page after clamping, so a client that asked for a
+    page that no longer exists still receives real rows and its real number.
+    """
+
+    items: list[TransactionResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class TransactionSnapshot(BaseModel):

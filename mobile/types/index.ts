@@ -3,6 +3,7 @@
  */
 
 export type TransactionType = 'income' | 'expense' | 'investment';
+export type TransactionSort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 
 export interface User {
   id: number;
@@ -55,6 +56,29 @@ export interface Transaction {
   transaction_date: string; // YYYY-MM-DD
   can_edit?: boolean;
   can_delete?: boolean;
+}
+
+export interface TransactionBrowserFilters {
+  q?: string;
+  start_date?: string;
+  end_date?: string;
+  type?: TransactionType;
+  category_id?: number;
+  min_amount?: number;
+  max_amount?: number;
+}
+
+export interface TransactionPageQuery extends TransactionBrowserFilters {
+  sort?: TransactionSort;
+  page?: number;
+}
+
+export interface TransactionPage {
+  items: Transaction[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 export type TransactionAuditAction = 'update' | 'delete';

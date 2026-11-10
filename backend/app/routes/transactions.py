@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -17,6 +17,7 @@ from finance_core.db.transactions import (
     get_transaction_by_id,
     list_transaction_history,
     list_transactions,
+    list_transactions_page,
     update_transaction,
 )
 from finance_core.db.users import AppUser
@@ -34,6 +35,7 @@ from ..models.schemas import (
     QuickInputRequest,
     TransactionCreate,
     TransactionHistoryResponse,
+    TransactionPageResponse,
     TransactionResponse,
     TransactionUpdate,
 )
@@ -205,6 +207,61 @@ def get_transaction_history(
         transaction_id=transaction_id,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/page", response_model=TransactionPageResponse)
+def get_transaction_page(
+    q: Optional[str] = Query(None, max_length=200),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    type: Optional[Literal["income", "expense", "investment"]] = Query(None),
+    category_id: Optional[int] = Query(None, ge=1),
+    min_amount: Optional[int] = Query(None, ge=1, le=9_007_199_254_740_991),
+    max_amount: Optional[int] = Query(None, ge=1, le=9_007_199_254_740_991),
+    sort: Literal["date_desc", "date_asc", "amount_desc", "amount_asc"] = Query("date_desc"),
+    page: int = Query(1, ge=1, le=2_147_483_647),
+    current_user: AppUser = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_db),
+) -> TransactionPageResponse:
+    """One page of the searchable, filterable transaction browser.
+
+    The page size is fixed so a client cannot request an unbounded read. Every
+    filter is scoped to the authenticated owner, and the total counts exactly the
+    rows the filters match, which is what numbered navigation needs.
+    """
+
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tanggal awal tidak boleh setelah tanggal akhir.",
+        )
+    if min_amount is not None and max_amount is not None and min_amount > max_amount:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Nominal minimum tidak boleh lebih dari nominal maksimum.",
+        )
+
+    result = list_transactions_page(
+        db,
+        user_id=current_user.id,
+        page=page,
+        page_size=20,
+        start_date=start_date.isoformat() if start_date else None,
+        end_date=end_date.isoformat() if end_date else None,
+        transaction_type=type,
+        category_id=category_id,
+        search=q,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        sort=sort,
+    )
+    return TransactionPageResponse(
+        items=[TransactionResponse.model_validate(item) for item in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        total_pages=result.total_pages,
     )
 
 

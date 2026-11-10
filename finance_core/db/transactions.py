@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -18,6 +19,25 @@ _SELECT = """
     FROM transactions t
     LEFT JOIN categories c ON t.category_id = c.id
 """
+
+_COUNT = """
+    SELECT COUNT(*)
+    FROM transactions t
+    LEFT JOIN categories c ON t.category_id = c.id
+"""
+
+# Only these literal orderings may reach SQL; a sort value is never interpolated
+# from raw request input.
+SORT_ORDERS = {
+    "date_desc": "t.transaction_date DESC, t.id DESC",
+    "date_asc": "t.transaction_date ASC, t.id ASC",
+    "amount_desc": "t.amount DESC, t.transaction_date DESC, t.id DESC",
+    "amount_asc": "t.amount ASC, t.transaction_date DESC, t.id DESC",
+}
+DEFAULT_SORT = "date_desc"
+
+# SQLite and PostgreSQL both accept this escape character for LIKE patterns.
+_LIKE_ESCAPE = "!"
 
 # Cash rows generated from a debt or an installment belong to that record. They
 # stay read-only here so the debt balance and the cash ledger cannot drift.
@@ -58,6 +78,83 @@ def is_derived_transaction(transaction: Transaction | None) -> bool:
     if transaction is None or not transaction.source_key:
         return False
     return transaction.source_key.startswith(DERIVED_SOURCE_PREFIXES)
+
+
+@dataclass(frozen=True)
+class TransactionPage:
+    """One requested page plus the filtered totals the caller needs to navigate."""
+
+    items: list[Transaction]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+def escape_like(text: str) -> str:
+    """Make user text literal inside a LIKE pattern.
+
+    ``%`` and ``_`` are wildcards, and the escape character itself must be
+    escaped first so a doubled ``!!`` stays one literal ``!``.
+    """
+
+    return (
+        text.replace(_LIKE_ESCAPE, _LIKE_ESCAPE * 2)
+        .replace("%", _LIKE_ESCAPE + "%")
+        .replace("_", _LIKE_ESCAPE + "_")
+    )
+
+
+def _browser_where(
+    *,
+    user_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    transaction_type: str | None = None,
+    category_id: int | None = None,
+    search: str | None = None,
+    min_amount: int | None = None,
+    max_amount: int | None = None,
+) -> tuple[str, list]:
+    """Build the shared owner-scoped WHERE clause for rows and counts."""
+
+    clause = " WHERE t.user_id = ?"
+    params: list = [user_id]
+
+    if start_date:
+        clause += " AND t.transaction_date >= ?"
+        params.append(start_date)
+    if end_date:
+        clause += " AND t.transaction_date <= ?"
+        params.append(end_date)
+    if transaction_type:
+        clause += " AND t.type = ?"
+        params.append(transaction_type)
+    if category_id is not None:
+        clause += " AND t.category_id = ?"
+        params.append(category_id)
+    if min_amount is not None:
+        clause += " AND t.amount >= ?"
+        params.append(min_amount)
+    if max_amount is not None:
+        clause += " AND t.amount <= ?"
+        params.append(max_amount)
+
+    keyword = (search or "").strip().lower()
+    if keyword:
+        pattern = f"%{escape_like(keyword)}%"
+        clause += (
+            " AND (LOWER(COALESCE(t.note, '')) LIKE ? ESCAPE '!'"
+            " OR LOWER(COALESCE(c.name, '')) LIKE ? ESCAPE '!'"
+            " OR LOWER(COALESCE(t.asset_name, '')) LIKE ? ESCAPE '!')"
+        )
+        params.extend([pattern, pattern, pattern])
+
+    return clause, params
+
+
+def _order_by(sort: str | None) -> str:
+    return SORT_ORDERS.get(sort or DEFAULT_SORT, SORT_ORDERS[DEFAULT_SORT])
 
 
 def _row_to_transaction(row: sqlite3.Row) -> Transaction:
@@ -149,29 +246,135 @@ def list_transactions(
     transaction_type: str | None = None,
     limit: int | None = None,
     offset: int = 0,
+    category_id: int | None = None,
+    search: str | None = None,
+    min_amount: int | None = None,
+    max_amount: int | None = None,
+    sort: str | None = None,
 ) -> list[Transaction]:
-    """List owned transactions, newest first, with optional filters."""
+    """List owned transactions, newest first, with optional filters.
 
-    query = _SELECT + " WHERE t.user_id = ?"
-    params: list = [user_id]
+    ``search``, ``category_id``, ``min_amount``, ``max_amount``, and ``sort`` are
+    additions for the paginated browser. Callers that omit them keep the original
+    date-descending behaviour.
+    """
 
-    if start_date:
-        query += " AND t.transaction_date >= ?"
-        params.append(start_date)
-    if end_date:
-        query += " AND t.transaction_date <= ?"
-        params.append(end_date)
-    if transaction_type:
-        query += " AND t.type = ?"
-        params.append(transaction_type)
+    query, params = _browser_where(
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        transaction_type=transaction_type,
+        category_id=category_id,
+        search=search,
+        min_amount=min_amount,
+        max_amount=max_amount,
+    )
+    query = _SELECT + query + " ORDER BY " + _order_by(sort)
 
-    query += " ORDER BY t.transaction_date DESC, t.id DESC"
     if limit is not None:
         query += " LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
     rows = connection.execute(query, tuple(params)).fetchall()
     return [_row_to_transaction(row) for row in rows]
+
+
+def count_transactions(
+    connection: sqlite3.Connection,
+    *,
+    user_id: int,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    transaction_type: str | None = None,
+    category_id: int | None = None,
+    search: str | None = None,
+    min_amount: int | None = None,
+    max_amount: int | None = None,
+) -> int:
+    """Count owned transactions matching the same filters as the row query."""
+
+    clause, params = _browser_where(
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        transaction_type=transaction_type,
+        category_id=category_id,
+        search=search,
+        min_amount=min_amount,
+        max_amount=max_amount,
+    )
+    row = connection.execute(_COUNT + clause, tuple(params)).fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def list_transactions_page(
+    connection: sqlite3.Connection,
+    *,
+    user_id: int,
+    page: int = 1,
+    page_size: int = 20,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    transaction_type: str | None = None,
+    category_id: int | None = None,
+    search: str | None = None,
+    min_amount: int | None = None,
+    max_amount: int | None = None,
+    sort: str | None = None,
+) -> TransactionPage:
+    """Read one page of the browser query with an owner-scoped filtered total.
+
+    The requested page is clamped to the last existing page so a client that kept
+    an old page number after deletions still lands on real rows. Reads are live,
+    not a snapshot: rows written between the count and the page read can shift
+    offsets, which is why the page is recounted when a requested page comes back
+    empty while the filter still matches transactions.
+    """
+
+    filters = {
+        "user_id": user_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "transaction_type": transaction_type,
+        "category_id": category_id,
+        "search": search,
+        "min_amount": min_amount,
+        "max_amount": max_amount,
+    }
+    size = max(1, int(page_size))
+    total = count_transactions(connection, **filters)
+    total_pages = math.ceil(total / size) if total else 0
+    effective = min(max(1, int(page)), max(total_pages, 1))
+
+    items = list_transactions(
+        connection,
+        **filters,
+        sort=sort,
+        limit=size,
+        offset=(effective - 1) * size,
+    )
+
+    if not items and total and effective > 1:
+        # A concurrent deletion emptied this page after the count. Recount once
+        # and read the new last page instead of returning an empty screen.
+        total = count_transactions(connection, **filters)
+        total_pages = math.ceil(total / size) if total else 0
+        effective = min(max(1, int(page)), max(total_pages, 1))
+        items = list_transactions(
+            connection,
+            **filters,
+            sort=sort,
+            limit=size,
+            offset=(effective - 1) * size,
+        )
+
+    return TransactionPage(
+        items=items,
+        total=total,
+        page=effective,
+        page_size=size,
+        total_pages=total_pages,
+    )
 
 
 def list_transactions_by_type(
