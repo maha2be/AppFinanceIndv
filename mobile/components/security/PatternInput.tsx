@@ -17,7 +17,7 @@ export interface PatternInputProps {
   onDrawingChange?: (drawing: boolean) => void;
   /** Snapshot a node-started gesture only on release, never on cancellation. */
   onComplete?: (value: number[]) => void;
-  /** Hide only connecting segments; dot feedback and gesture handling stay unchanged. */
+  /** Hide connecting segments and selected-dot feedback without changing gesture handling. */
   showLines?: boolean;
   disabled?: boolean;
   label?: string;
@@ -278,9 +278,9 @@ export function PatternInput({
 
             {NODES.map((node) => {
               const center = getNodeCenter(node, boardSize);
-              const selected = selectedSet.has(node);
-              const isEndpoint = node === startNode || node === endNode;
-              const isActiveHead = isDrawing && node === endNode;
+              const selected = showLines && selectedSet.has(node);
+              const isEndpoint = showLines && (node === startNode || node === endNode);
+              const isActiveHead = showLines && isDrawing && node === endNode;
 
               return (
                 <View

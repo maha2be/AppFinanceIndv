@@ -769,6 +769,8 @@ test('line visibility exists only for enabled patterns and saves one explicit PI
   await harness.press('Pattern line visibility');
   assert.deepEqual(harness.allByType('Input').map((field) => field.props.accessibilityLabel), ['PIN saat ini']);
   assert.equal(harness.allByType('PatternInput').length, 0);
+  assert.ok(harness.textMatching(/Every dot keeps its neutral appearance while drawing/));
+  assert.equal(harness.textMatching(/Selected dots stay visible/), undefined);
   assert.ok(harness.byLabel('Show lines'));
   await harness.press('Hide lines');
   for (const invalid of ['', '24681', '２４６８１３']) {

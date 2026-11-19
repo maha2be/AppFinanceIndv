@@ -413,8 +413,8 @@ export default function AppLockSettingsScreen() {
       operationSucceeded(
         ticket, 'pattern-display', 'Pattern display updated',
         visible
-          ? 'Connecting lines are visible on the unlock screen.'
-          : 'Connecting lines are hidden on the unlock screen. Selected dots remain visible.'
+          ? 'Pattern lines and selected-dot feedback are visible on the unlock screen.'
+          : 'Pattern lines are hidden on the unlock screen. Every dot keeps its neutral appearance while drawing.'
       );
     } catch (err) {
       operationFailed(err, ticket, 'pattern-display', 'Unable to update pattern line visibility.');
@@ -689,10 +689,11 @@ export default function AppLockSettingsScreen() {
           ) : view === 'pattern-display' ? (
             <>
               <Text style={styles.body}>
-                This changes only connecting lines on the unlock screen. Selected dots stay visible.
-                Setup and repeat always show lines.
+                Hide lines also hides selected-dot feedback on the unlock screen.
+                Every dot keeps its neutral appearance while drawing.
+                Setup and repeat always show lines and selected-dot feedback.
               </Text>
-              <View accessibilityRole="radiogroup" accessibilityLabel="Connecting lines">
+              <View accessibilityRole="radiogroup" accessibilityLabel="Pattern drawing feedback">
                 {([{ visible: true, label: 'Show lines' }, { visible: false, label: 'Hide lines' }] as const).map(({ visible, label }) => {
                   const selected = patternLinesDraft === visible;
                   return (

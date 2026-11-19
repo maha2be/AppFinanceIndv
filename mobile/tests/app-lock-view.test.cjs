@@ -66,7 +66,7 @@ function drawing(harness, active) {
   harness.flush();
 }
 
-test('locked pattern drawing suspends scrolling without unlocking before completion and retains manual fallback', async (t) => {
+test('locked pattern drawing suspends scrolling and verifies only on release completion', async (t) => {
   const { harness, calls } = unlockHarness(t);
   await harness.mount();
   assert.equal(scrolling(harness), true);
@@ -79,7 +79,8 @@ test('locked pattern drawing suspends scrolling without unlocking before complet
   drawing(harness, false);
   assert.equal(scrolling(harness), true);
   assert.deepEqual(harness.byLabel('Pola buka kunci aplikasi').props.value, PATTERN);
-  await harness.press('Buka kunci dengan pola');
+  await completion(harness)(PATTERN);
+  await harness.settle();
   assert.deepEqual(calls.pattern, [PATTERN]);
   assert.equal(scrolling(harness), true);
 });
@@ -144,7 +145,9 @@ test('pattern verification failure clears the draft and restores scrolling for r
   await harness.press('Gunakan pola kunci');
   drawing(harness, true);
   harness.patternChange('Pola buka kunci aplikasi', PATTERN);
-  await harness.press('Buka kunci dengan pola');
+  drawing(harness, false);
+  await completion(harness)(PATTERN);
+  await harness.settle();
   assert.deepEqual(calls.pattern, [PATTERN]);
   assert.equal(scrolling(harness), true);
   assert.equal(harness.byLabel('Pola buka kunci aplikasi').props.value.length, 0);
@@ -186,13 +189,46 @@ function deferredUnlock() {
   return { promise, resolve };
 }
 
+test('pattern unlock never renders a submit button in empty, drawing, complete, error, cooldown, or busy states', async (t) => {
+  const now = 1_900_000_000_000;
+  t.mock.method(Date, 'now', () => now);
+  for (const phase of ['empty', 'drawing', 'complete', 'error', 'cooldown', 'busy']) {
+    const { harness, state, calls } = unlockHarness(t, { patternResult: false });
+    await harness.mount();
+    assert.ok(harness.byLabel('Buka kunci'), 'PIN mode retains its submit button');
+    await harness.press('Gunakan pola kunci');
+    if (phase === 'drawing' || phase === 'complete') drawing(harness, true);
+    if (phase === 'drawing' || phase === 'complete') harness.patternChange('Pola buka kunci aplikasi', PATTERN);
+    if (phase === 'complete') {
+      drawing(harness, false);
+      assert.deepEqual(harness.byLabel('Pola buka kunci aplikasi').props.value, PATTERN);
+    }
+    if (phase === 'error') {
+      await completion(harness)(PATTERN);
+      await harness.settle();
+      assert.deepEqual(calls.pattern, [PATTERN]);
+      assert.equal(state.failedAttempts, 1);
+      assert.ok(harness.textMatching(/Pola salah/));
+    }
+    if (phase === 'cooldown') state.retryAt = now + 30_000;
+    if (phase === 'busy') state.busy = true;
+    harness.flush();
+    assert.equal(harness.byLabel('Buka kunci dengan pola'), undefined, `${phase} must not render pattern submit`);
+    assert.equal(harness.byLabel('Buka kunci'), undefined, `${phase} must not render PIN submit in pattern mode`);
+    assert.ok(harness.byLabel('Gunakan PIN 6 digit'), `${phase} retains the PIN fallback`);
+    assert.ok(harness.byLabel('Gunakan sidik jari / biometrik'), `${phase} retains the biometric fallback`);
+    harness.unmount();
+  }
+});
+
 test('release completion verifies its snapshot rather than an older rendered pattern draft', async (t) => {
   const { harness, state, calls } = unlockHarness(t);
   await harness.mount();
   await harness.press('Gunakan pola kunci');
   harness.patternChange('Pola buka kunci aplikasi', [0, 1, 2, 5]);
   assert.deepEqual(calls.pattern, [], 'node changes never verify');
-  assert.ok(harness.byLabel('Buka kunci dengan pola'), 'manual accessibility fallback remains rendered');
+  assert.equal(harness.byLabel('Buka kunci dengan pola'), undefined, 'pattern verification has no manual submit button');
+  assert.ok(harness.byLabel('Gunakan PIN 6 digit'), 'PIN remains the accessibility fallback');
   await completion(harness)(PATTERN);
   await harness.settle();
   assert.deepEqual(calls.pattern, [PATTERN]);
@@ -214,29 +250,33 @@ test('empty, short, and noncanonical release candidates are rejected locally wit
   }
 });
 
-test('release and manual unlock stay single flight in either pending race order', async (t) => {
-  for (const first of ['release', 'manual']) {
-    const pending = deferredUnlock();
-    const { harness, calls } = unlockHarness(t, { pending });
-    t.after(() => pending.resolve());
-    await harness.mount();
-    await harness.press('Gunakan pola kunci');
-    harness.patternChange('Pola buka kunci aplikasi', PATTERN);
-    const release = completion(harness);
-    const manual = harness.byLabel('Buka kunci dengan pola').props.onPress;
-    const operation = first === 'release' ? release(PATTERN) : manual();
-    harness.flush();
-    await (first === 'release' ? manual() : release(PATTERN));
-    await release(PATTERN);
-    assert.deepEqual(calls.pattern, [PATTERN], 'only one proof may reach the service while pending');
-    pending.resolve();
-    await operation;
-    await harness.settle();
-    await release(PATTERN);
-    await manual();
-    assert.deepEqual(calls.pattern, [PATTERN], 'a successful unlock cannot verify an old proof again');
-    harness.unmount();
-  }
+test('repeated release completion stays single flight and blocks PIN switching and biometric actions while pending', async (t) => {
+  const pending = deferredUnlock();
+  const { harness, calls } = unlockHarness(t, { pending });
+  t.after(() => pending.resolve());
+  await harness.mount();
+  await harness.press('Gunakan pola kunci');
+  harness.patternChange('Pola buka kunci aplikasi', PATTERN);
+  const release = completion(harness);
+  const switchToPin = harness.byLabel('Gunakan PIN 6 digit').props.onPress;
+  const biometric = harness.byLabel('Gunakan sidik jari / biometrik').props.onPress;
+  release(PATTERN);
+  await release([0, 1, 2, 5]);
+  await switchToPin();
+  await biometric();
+  harness.flush();
+  await completion(harness)(PATTERN);
+  await switchToPin();
+  await biometric();
+  assert.deepEqual(calls.pattern, [PATTERN], 'only one proof may reach the service before or after rerender');
+  assert.deepEqual(calls.pin, []);
+  assert.equal(calls.biometrics, 0, 'the synchronous action lock prevents a second authentication method');
+  assert.ok(harness.byLabel('Pola buka kunci aplikasi'), 'PIN switching stays blocked until verification settles');
+  pending.resolve();
+  await harness.settle();
+  await release(PATTERN);
+  await harness.settle();
+  assert.deepEqual(calls.pattern, [PATTERN], 'a successful unlock cannot verify an old proof again');
 });
 
 test('obsolete release callbacks stay rejected after method switch, background, or unmount', async (t) => {

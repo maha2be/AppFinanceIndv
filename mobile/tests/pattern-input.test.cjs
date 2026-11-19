@@ -251,13 +251,13 @@ function boardElement(tree) {
   );
 }
 
-function createPatternInput() {
+function createPatternInput(initialProps = {}) {
   const renderer = createRenderer();
   const helperModule = loadHelper();
   const componentModule = loadComponent(helperModule, renderer.React);
   renderer.setComponent(componentModule.PatternInput);
 
-  let value = [];
+  let value = Array.from(initialProps.value || []);
   const changes = [];
   const onChange = (next) => {
     const copy = Array.from(next);
@@ -266,7 +266,7 @@ function createPatternInput() {
     renderer.setProps({ value });
   };
 
-  renderer.mount({ value: [], onChange });
+  renderer.mount({ ...initialProps, value, onChange });
   return {
     renderer,
     changes,
@@ -344,7 +344,7 @@ function loadComponent(helperModule, React) {
     },
   });
   const theme = {
-    Colors: token,
+    Colors: new Proxy({}, { get: (_target, key) => `color:${String(key)}` }),
     Fonts: token,
     Radius: token,
     Space: token,
@@ -709,21 +709,115 @@ test('release without a node-started gesture never completes even with a previou
   grid.renderer.unmount();
 });
 
-test('showLines hides only connecting segments and never changes nodes or hit selection', () => {
+function nodeAppearance(grid) {
+  const nodes = elements(grid.renderer.tree).filter((element) => /^node-/.test(element.props.key || ''));
+  assert.equal(nodes.length, 9, 'all nine outer nodes must remain rendered');
+  const flatten = (style) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  return nodes.map((node) => {
+    const dots = node.children.filter((child) => child && child.type === 'View');
+    assert.equal(dots.length, 1, 'each outer node must contain one inner dot');
+    return { key: node.props.key, outer: flatten(node.props.style), dot: flatten(dots[0].props.style) };
+  });
+}
+
+test('hidden patterns keep every outer node and inner dot identical to empty through release and retries', () => {
+  const completed = [];
+  const drawingChanges = [];
+  const grid = createPatternInput({
+    showLines: false,
+    onComplete: (pattern) => completed.push(Array.from(pattern)),
+    onDrawingChange: (drawing) => drawingChanges.push(drawing),
+  });
+  const empty = nodeAppearance(grid);
+  const unchanged = (phase) => {
+    assert.deepEqual(nodeAppearance(grid), empty, phase);
+    assert.equal(elements(grid.renderer.tree).some((element) => /^seg-/.test(element.props.key || '')), false);
+  };
+  grid.draw(40, 40);
+  unchanged('the first selected node and active head must stay invisible');
+  assert.deepEqual(drawingChanges, [true]);
+  for (const [x, y] of [[120, 40], [200, 40], [200, 120], [120, 120], [40, 120], [40, 200], [120, 200], [200, 200]]) {
+    grid.move(x, y);
+    unchanged(`drawing node at ${x},${y} must not reveal selection or endpoints`);
+  }
+  assert.deepEqual(grid.value(), [0, 1, 2, 5, 4, 3, 6, 7, 8]);
+  assert.deepEqual(completed, [], 'hidden node changes must not verify before release');
+  assert.deepEqual(drawingChanges, [true], 'hidden drawing keeps parent scrolling suspended');
+  grid.release();
+  unchanged('the released endpoints must stay invisible');
+  assert.deepEqual(completed, [[0, 1, 2, 5, 4, 3, 6, 7, 8]]);
+  assert.deepEqual(drawingChanges, [true, false]);
+  grid.renderer.update({ value: [] });
+  unchanged('a consumer clearing a failed proof must restore the same hidden baseline');
+  grid.draw(200, 200);
+  unchanged('a subsequent gesture must not reveal its new active head');
+  grid.move(40, 200);
+  unchanged('a subsequent midpoint and endpoint must remain invisible');
+  assert.deepEqual(grid.value(), [8, 7, 6]);
+  grid.release();
+  unchanged('a short retry release must remain invisible');
+  assert.deepEqual(completed, [[0, 1, 2, 5, 4, 3, 6, 7, 8], [8, 7, 6]]);
+  grid.clear();
+  unchanged('clear must retain the empty hidden appearance');
+  grid.draw(40, 40);
+  unchanged('drawing after clear must not leak the active head');
+  grid.terminate();
+  unchanged('cancellation must retain the empty hidden appearance');
+  assert.deepEqual(drawingChanges, [true, false, true, false, true, false]);
+  assert.equal(completed.length, 2, 'cancellation never emits another completion');
+  grid.renderer.unmount();
+});
+
+test('hidden selected first mount stays neutral and toggling visible restores endpoints and active-head feedback', () => {
+  const baseline = createPatternInput({ showLines: false });
+  const empty = nodeAppearance(baseline);
+  baseline.renderer.unmount();
+  const grid = createPatternInput({ showLines: false, value: [0, 1, 2, 5] });
+  assert.deepEqual(nodeAppearance(grid), empty, 'a selected controlled value must not flash selection on first mount');
+  grid.renderer.update({ showLines: true });
+  const visible = nodeAppearance(grid);
+  assert.notDeepEqual(visible[0].outer, empty[0].outer, 'visible start has outer selection feedback');
+  assert.notDeepEqual(visible[0].dot, empty[0].dot, 'visible start has inner endpoint feedback');
+  assert.notDeepEqual(visible[1].dot, empty[1].dot, 'visible middle has inner selection feedback');
+  assert.notDeepEqual(visible[5].dot, visible[1].dot, 'endpoint and middle feedback remain distinct');
+  assert.deepEqual(visible[8], empty[8], 'an unselected node must stay neutral');
+  grid.renderer.update({ showLines: false });
+  assert.deepEqual(nodeAppearance(grid), empty);
+  grid.draw(200, 200);
+  assert.deepEqual(grid.value(), [8], 'the next gesture replaces the controlled draft');
+  assert.deepEqual(nodeAppearance(grid), empty);
+  grid.renderer.update({ showLines: true });
+  const active = nodeAppearance(grid);
+  assert.notDeepEqual(active[8].outer, empty[8].outer, 'visible active head has outer feedback');
+  assert.notDeepEqual(active[8].dot, empty[8].dot, 'visible active endpoint has inner feedback');
+  grid.release();
+  assert.notDeepEqual(nodeAppearance(grid)[8].outer, active[8].outer, 'release removes active-head feedback only');
+  assert.notDeepEqual(nodeAppearance(grid)[8].dot, empty[8].dot, 'released visible endpoint remains selected');
+  grid.renderer.update({ showLines: false });
+  assert.deepEqual(nodeAppearance(grid), empty);
+  grid.renderer.unmount();
+});
+
+test('showLines hides pattern feedback without changing node geometry or hit selection', () => {
   const grid = createPatternInput();
+  const empty = nodeAppearance(grid);
   grid.draw(40, 40);
   grid.move(200, 40);
   grid.move(200, 120);
+  assert.notDeepEqual(nodeAppearance(grid)[0].outer, empty[0].outer, 'default visibility keeps outer selection feedback');
+  assert.notDeepEqual(nodeAppearance(grid)[5].dot, empty[5].dot, 'default visibility keeps inner endpoint feedback');
   const segments = () => elements(grid.renderer.tree).filter((element) => /^seg-/.test(element.props.key || ''));
   const nodes = () => elements(grid.renderer.tree).filter((element) => /^node-/.test(element.props.key || ''))
     .map((element) => ({ key: element.props.key, style: Object.assign({}, ...element.props.style.filter(Boolean)) }));
   assert.equal(segments().length, 3, 'connecting lines default to visible');
-  const before = nodes();
+  const before = nodes().map(({ key, style }) => ({ key, left: style.left, top: style.top }));
   const changeCount = grid.changes.length;
   grid.renderer.update({ showLines: false });
   assert.equal(segments().length, 0);
   assert.equal(nodes().length, 9);
-  assert.deepEqual(nodes(), before, 'selected nodes and geometry must stay unchanged');
+  assert.deepEqual(nodeAppearance(grid), empty, 'hiding an active visible gesture must hide all node feedback');
+  assert.deepEqual(nodes().map(({ key, style }) => ({ key, left: style.left, top: style.top })), before,
+    'hiding feedback must not change node geometry');
   assert.equal(grid.changes.length, changeCount);
   grid.move(200, 200);
   assert.deepEqual(grid.value(), [0, 1, 2, 5, 8], 'hidden lines must not alter hit selection');

@@ -564,15 +564,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
             )}
 
             <View style={styles.actions}>
-              {unlockMethod === 'pattern' && lockState.patternEnabled ? (
-                <Button
-                  title="Buka kunci dengan pola"
-                  onPress={() => { void handlePatternUnlock(patternRef.current); }}
-                  loading={lockState.busy && !signingOut && !retryingBoot}
-                  disabled={isBusy || inCooldown || !isValidLockPattern(pattern)}
-                  size="lg"
-                />
-              ) : (
+              {unlockMethod !== 'pattern' || !lockState.patternEnabled ? (
                 <Button
                   title="Buka kunci"
                   onPress={handlePinUnlock}
@@ -580,7 +572,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
                   disabled={isBusy || inCooldown || pin.length !== 6}
                   size="lg"
                 />
-              )}
+              ) : null}
 
               {lockState.patternEnabled ? (
                 <Button
