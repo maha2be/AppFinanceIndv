@@ -1,13 +1,11 @@
 import { AppAlert as Alert } from '../../services/appAlert';
-import React, { useState, useEffect, useSyncExternalStore } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Space, Type } from '../../utils/theme';
+import { Colors, Fonts, Radius, Space, Type } from '../../utils/theme';
 import { User } from '../../types';
-import { Button } from '../../components/ui/Button';
 import { Screen } from '../../components/ui/Screen';
-import { ErrorState } from '../../components/ui/ErrorState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { FadeIn } from '../../components/ui/FadeIn';
 import { authApi, describeApiError } from '../../services/auth';
@@ -18,8 +16,21 @@ import { getAppLockState, subscribeAppLock } from '../../services/appLock';
 export default function SettingsScreen() {
   const [user, setUser] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [googleAvailable, setGoogleAvailable] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [googleAvailable, setGoogleAvailable] = useState<boolean | null>(null);
   const [linkSheetVisible, setLinkSheetVisible] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const mounted = useRef(true);
+  const focused = useRef(false);
+  const profileRequest = useRef(0);
+  const profileReadyRef = useRef(false);
+  const telegramBusy = useRef(false);
+  const logoutBusy = useRef(false);
+  const googleSheetOpen = useRef(false);
+  const { width, fontScale } = useWindowDimensions();
+  const stackDetails = width < 360 || fontScale > 1.3;
   const appLock = useSyncExternalStore(
     subscribeAppLock,
     getAppLockState,
@@ -27,46 +38,86 @@ export default function SettingsScreen() {
   );
 
   useEffect(() => {
+    mounted.current = true;
     let active = true;
-    isGoogleAuthAvailable().then((ok) => {
-      if (active) setGoogleAvailable(ok);
-    });
+    isGoogleAuthAvailable()
+      .then((ok) => {
+        if (active) setGoogleAvailable(ok);
+      })
+      .catch(() => {
+        if (active) setGoogleAvailable(false);
+      });
     return () => {
       active = false;
+      mounted.current = false;
+      profileReadyRef.current = false;
+      profileRequest.current += 1;
     };
   }, []);
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
+    if (!mounted.current || !focused.current) return;
+    const request = ++profileRequest.current;
+    const isCurrent = () =>
+      mounted.current && focused.current && request === profileRequest.current;
+    profileReadyRef.current = false;
+    setProfileLoading(true);
     try {
-      setUser(await authApi.getProfile());
+      const profile = await authApi.getProfile();
+      if (!isCurrent()) return;
+      if (!profile) throw new Error('Missing account details.');
+      setUser(profile);
       setError(null);
+      profileReadyRef.current = true;
     } catch (err) {
-      setError(describeApiError(err, 'Gagal memuat profil.'));
+      if (isCurrent()) setError(describeApiError(err, 'Gagal memuat profil.'));
+    } finally {
+      if (isCurrent()) setProfileLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadProfile();
   }, []);
 
-  const [linking, setLinking] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      focused.current = true;
+      void loadProfile();
+      return () => {
+        focused.current = false;
+        profileReadyRef.current = false;
+        profileRequest.current += 1;
+      };
+    }, [loadProfile])
+  );
+
+  const profileReady = user !== null && !profileLoading && !error;
+  const accountBusy = linking || unlinking || loggingOut || linkSheetVisible;
+  const profileActionsDisabled = !profileReady || accountBusy;
+  const canUseProfile = () =>
+    mounted.current && focused.current && profileReadyRef.current &&
+    !telegramBusy.current && !logoutBusy.current && !googleSheetOpen.current;
 
   const handleLinkTelegram = async () => {
+    if (!canUseProfile()) return;
+    telegramBusy.current = true;
     setLinking(true);
     try {
       const { code, expires_in_minutes } = await authApi.createTelegramLinkToken();
+      if (!mounted.current || !focused.current) return;
       Alert.alert(
         'Kode tautan Telegram',
         `Kirim perintah berikut ke Bot04:\n\n/link ${code}\n\nKode berlaku ${expires_in_minutes} menit dan hanya bisa dipakai sekali.`
       );
     } catch (err) {
-      Alert.alert('Gagal membuat kode', describeApiError(err, 'Coba lagi sebentar lagi.'));
+      if (mounted.current && focused.current) {
+        Alert.alert('Gagal membuat kode', describeApiError(err, 'Coba lagi sebentar lagi.'));
+      }
     } finally {
-      setLinking(false);
+      telegramBusy.current = false;
+      if (mounted.current) setLinking(false);
     }
   };
 
   const handleUnlinkTelegram = () => {
+    if (!canUseProfile() || !user?.telegram_linked) return;
     Alert.alert(
       'Putuskan tautan Telegram',
       'Data keuanganmu tetap aman. Setelah diputus, kamu bisa menautkan akun Telegram lain lewat kode baru.',
@@ -76,11 +127,19 @@ export default function SettingsScreen() {
           text: 'Putuskan',
           style: 'destructive',
           onPress: async () => {
+            if (!canUseProfile()) return;
+            telegramBusy.current = true;
+            setUnlinking(true);
             try {
               await authApi.unlinkTelegram();
               await loadProfile();
             } catch (err) {
-              Alert.alert('Gagal memutus tautan', describeApiError(err, 'Coba lagi sebentar lagi.'));
+              if (mounted.current && focused.current) {
+                Alert.alert('Gagal memutus tautan', describeApiError(err, 'Coba lagi sebentar lagi.'));
+              }
+            } finally {
+              telegramBusy.current = false;
+              if (mounted.current) setUnlinking(false);
             }
           },
         },
@@ -89,249 +148,243 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
+    if (logoutBusy.current || telegramBusy.current || googleSheetOpen.current) return;
     Alert.alert('Keluar dari akun', 'Kamu perlu masuk lagi untuk membuka data keuangan.', [
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Keluar',
         style: 'destructive',
         onPress: async () => {
-          await authApi.logout();
-          router.replace('/(auth)/login');
+          if (!mounted.current || !focused.current || logoutBusy.current || telegramBusy.current || googleSheetOpen.current) return;
+          logoutBusy.current = true;
+          profileReadyRef.current = false;
+          profileRequest.current += 1;
+          setLoggingOut(true);
+          try {
+            await authApi.logout();
+            if (mounted.current && focused.current) router.replace('/(auth)/login');
+          } catch (err) {
+            if (mounted.current && focused.current) {
+              Alert.alert('Unable to sign out', describeApiError(err, 'Try again.'));
+              await loadProfile();
+            }
+          } finally {
+            logoutBusy.current = false;
+            if (mounted.current) setLoggingOut(false);
+          }
         },
       },
     ]);
   };
 
-  const initial = user?.first_name ? user.first_name[0].toUpperCase() : 'B';
+  const profileStatus = profileLoading ? 'Loading account details...' : 'Account details unavailable.';
+  const initial = user?.first_name?.trim().charAt(0).toUpperCase();
+  const lockHint = !appLock.ready
+    ? 'Memuat status keamanan perangkat...'
+    : !appLock.supported
+    ? 'Tidak tersedia di perangkat ini.'
+    : appLock.enabled
+    ? appLock.patternEnabled && appLock.biometricsEnabled
+      ? 'Aktif · PIN 6 digit, pola kunci, dan sidik jari / biometrik'
+      : appLock.patternEnabled
+      ? 'Aktif · PIN 6 digit dan pola kunci'
+      : appLock.biometricsEnabled
+      ? 'Aktif · PIN 6 digit dan sidik jari / biometrik'
+      : 'Aktif · PIN 6 digit'
+    : 'Nonaktif · Lindungi aplikasi dengan PIN 6 digit';
+  const googleLinkable = profileReady && googleAvailable === true && user?.has_password === true;
+  const googleTitle = !profileReady
+    ? 'Google'
+    : user?.google_linked
+    ? 'Google tertaut'
+    : googleLinkable
+    ? 'Tautkan akun Google'
+    : googleAvailable === null
+    ? 'Google'
+    : 'Google belum tersedia';
+  const googleHint = !profileReady
+    ? profileStatus
+    : user?.google_linked
+    ? 'Kamu bisa masuk memakai akun Google yang sudah ditautkan.'
+    : googleAvailable === null
+    ? 'Checking availability...'
+    : googleLinkable
+    ? 'Masuk lebih cepat dengan akun Google yang emailnya sama.'
+    : googleAvailable === false
+    ? 'Google sign-in is not available in this build.'
+    : 'Google linking requires an account password.';
 
   return (
-    <Screen>
+    <Screen contentStyle={styles.content}>
       <FadeIn>
-        <Text style={styles.title}>Pengaturan</Text>
-      </FadeIn>
+        <Text style={styles.title} accessibilityRole="header">Pengaturan</Text>
 
-      {error ? <ErrorState message={error} onRetry={loadProfile} /> : null}
-
-      <FadeIn delay={60}>
         <View style={styles.profile}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initial}</Text>
+          <View style={styles.avatar} accessible={false} importantForAccessibility="no-hide-descendants">
+            {initial ? (
+              <Text style={styles.avatarText}>{initial}</Text>
+            ) : (
+              <Ionicons name="person-outline" size={22} color={Colors.inkSoft} />
+            )}
           </View>
           <View style={styles.profileInfo}>
             {user ? (
               <>
-                <Text style={styles.userName} numberOfLines={1}>
-                  {user.first_name || 'Pengguna'}
-                </Text>
-                <Text style={styles.userEmail} numberOfLines={1}>
-                  {user.email}
-                </Text>
+                <Text style={styles.userName}>{user.first_name || 'Pengguna'}</Text>
+                {user.email ? <Text style={styles.userEmail}>{user.email}</Text> : null}
+              </>
+            ) : profileLoading ? (
+              <>
+                <Skeleton width="60%" height={24} />
+                <Skeleton width="85%" height={14} style={styles.skeletonLine} />
               </>
             ) : (
-              <>
-                <Skeleton width="45%" height={17} />
-                <Skeleton width="70%" height={12} style={styles.skeletonLine} />
-              </>
+              <Text style={styles.userName}>Your account</Text>
             )}
+            {!profileReady ? (
+              <Text style={styles.profileStatus} accessibilityLiveRegion="polite">{profileStatus}</Text>
+            ) : null}
           </View>
         </View>
-      </FadeIn>
 
-      <FadeIn delay={120}>
-        <Text style={styles.sectionLabel}>Preferensi</Text>
-        <View style={styles.block}>
-          <Row label="Mata uang" value={user?.currency || 'IDR'} />
-          <Row label="Zona waktu" value={user?.timezone || 'Asia/Jakarta'} last />
-        </View>
-      </FadeIn>
-
-      <FadeIn delay={150}>
-        <Text style={styles.sectionLabel}>Otomatisasi</Text>
-        <View style={styles.block}>
-          <Pressable
-            onPress={() => router.push('/recurring')}
-            accessibilityRole="button"
-            accessibilityLabel="Transaksi berulang"
-            style={({ pressed }) => [styles.navRow, pressed && styles.pressed]}
-          >
-            <View style={styles.navBody}>
-              <Text style={styles.navTitle}>Transaksi berulang</Text>
-              <Text style={styles.navHint}>
-                Jadwal pemasukan, pengeluaran, dan investasi otomatis
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.inkMuted} />
-          </Pressable>
-        </View>
-      </FadeIn>
-
-      <FadeIn delay={180}>
-        <Text style={styles.sectionLabel}>Telegram</Text>
-        <View style={styles.block}>
-          <View style={styles.navRow}>
-            <View style={styles.navBody}>
-              <Text style={styles.navTitle}>Hubungkan akun Telegram</Text>
-              <Text style={styles.navHint}>
-                {user?.telegram_linked
-                  ? 'Sudah terhubung. Kirim kode baru bila ingin pindah akun Telegram.'
-                  : 'Minta kode 6 digit, lalu kirim /link <kode> ke Bot04.'}
-              </Text>
-            </View>
-            <Button
-              title={user?.telegram_linked ? 'Kode baru' : 'Kode'}
-              variant="secondary"
-              onPress={handleLinkTelegram}
-              loading={linking}
-              style={styles.linkButton}
+        {error ? (
+          <View style={styles.errorPanel}>
+            <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>
+            <SettingsRow
+              icon="refresh-outline"
+              title="Coba lagi"
+              onPress={loadProfile}
+              disabled={profileLoading || accountBusy}
+              busy={profileLoading}
+              last
             />
           </View>
-          {user?.telegram_linked ? (
-            <Pressable
-              onPress={handleUnlinkTelegram}
-              accessibilityRole="button"
-              accessibilityLabel="Putuskan tautan Telegram"
-              style={({ pressed }) => [styles.navRow, styles.lastNavRow, pressed && styles.pressed]}
-            >
-              <View style={styles.navBody}>
-                <Text style={styles.navTitle}>Putuskan tautan Telegram</Text>
-                <Text style={styles.navHint}>
-                  Lepas akun Telegram ini tanpa menghapus data keuangan.
-                </Text>
-              </View>
-              <Ionicons name="unlink-outline" size={18} color={Colors.inkMuted} />
-            </Pressable>
-          ) : null}
-        </View>
-      </FadeIn>
+        ) : null}
 
-      <FadeIn delay={180}>
-        <Text style={styles.sectionLabel}>Google</Text>
-        <View style={styles.block}>
-          {user?.google_linked ? (
-            <View style={[styles.navRow, styles.lastNavRow]}>
-              <View style={styles.navBody}>
-                <Text style={styles.navTitle}>Google tertaut</Text>
-                <Text style={styles.navHint}>
-                  Kamu bisa masuk memakai akun Google yang sudah ditautkan.
-                </Text>
-              </View>
-              <Ionicons name="checkmark-circle-outline" size={18} color={Colors.inkMuted} />
-            </View>
-          ) : googleAvailable && user?.has_password ? (
-            <Pressable
-              onPress={() => setLinkSheetVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Tautkan akun Google"
-              style={({ pressed }) => [styles.navRow, styles.lastNavRow, pressed && styles.pressed]}
-            >
-              <View style={styles.navBody}>
-                <Text style={styles.navTitle}>Tautkan akun Google</Text>
-                <Text style={styles.navHint}>
-                  Masuk lebih cepat dengan akun Google yang emailnya sama.
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.inkMuted} />
-            </Pressable>
-          ) : (
-            <View style={[styles.navRow, styles.lastNavRow]}>
-              <View style={styles.navBody}>
-                <Text style={styles.navTitle}>Google belum tersedia</Text>
-                <Text style={styles.navHint}>
-                  Login Google hanya aktif di aplikasi Android versi terbaru.
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-      </FadeIn>
-
-      <FadeIn delay={200}>
-        <Text style={styles.sectionLabel}>Account security</Text>
-        <View style={styles.block}>
-          <Pressable
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel} accessibilityRole="header">Account security</Text>
+          <SettingsRow
+            icon="lock-closed-outline"
+            title="Kunci aplikasi"
+            hint={lockHint}
             onPress={() => router.push('/app-lock' as never)}
-            accessibilityRole="button"
-            accessibilityLabel="Kunci aplikasi"
-            style={({ pressed }) => [styles.navRow, pressed && styles.pressed]}
-          >
-            <View style={styles.navBody}>
-              <Text style={styles.navTitle}>Kunci aplikasi</Text>
-              <Text style={styles.navHint}>
-                {!appLock.ready
-                  ? 'Memuat status keamanan perangkat...'
-                  : !appLock.supported
-                  ? 'Tidak tersedia di perangkat ini.'
-                  : appLock.enabled
-                  ? appLock.patternEnabled && appLock.biometricsEnabled
-                    ? 'Aktif · PIN 6 digit, pola kunci, dan sidik jari / biometrik'
-                    : appLock.patternEnabled
-                    ? 'Aktif · PIN 6 digit dan pola kunci'
-                    : appLock.biometricsEnabled
-                    ? 'Aktif · PIN 6 digit dan sidik jari / biometrik'
-                    : 'Aktif · PIN 6 digit'
-                  : 'Nonaktif · Lindungi aplikasi dengan PIN 6 digit'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.inkMuted} />
-          </Pressable>
-
-          <Pressable
-            onPress={() => router.push('/change-password')}
-            accessibilityRole="button"
-            accessibilityLabel="Change password"
-            style={({ pressed }) => [styles.navRow, styles.lastNavRow, pressed && styles.pressed]}
-          >
-            <View style={styles.navBody}>
-              <Text style={styles.navTitle}>Change password</Text>
-              <Text style={styles.navHint}>
-                {user?.has_password === false
-                  ? 'Signed in with Google. View password management info.'
-                  : 'Update your account password and sign out other devices.'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.inkMuted} />
-          </Pressable>
-
-          <Pressable
-            onPress={() => router.push('/delete-account')}
-            accessibilityRole="button"
-            accessibilityLabel="Delete account"
-            style={({ pressed }) => [styles.navRow, styles.lastNavRow, pressed && styles.pressed]}
-          >
-            <View style={styles.navBody}>
-              <Text style={styles.dangerTitle}>Delete account</Text>
-              <Text style={styles.navHint}>
-                Permanently delete your account and all financial records.
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.danger} />
-          </Pressable>
+            disabled={accountBusy}
+          />
+          <SettingsRow
+            icon="key-outline"
+            title="Change password"
+            hint={!profileReady
+              ? profileStatus
+              : user?.has_password === false
+              ? 'Signed in with Google. View password management info.'
+              : 'Update your password and sign out other devices.'}
+            onPress={() => {
+              if (canUseProfile()) router.push('/change-password');
+            }}
+            disabled={profileActionsDisabled}
+            last
+          />
         </View>
-      </FadeIn>
 
-      <FadeIn delay={210}>
-        <Text style={styles.sectionLabel}>Tentang aplikasi</Text>
-        <View style={styles.block}>
-          <Row label="Versi" value="1.0.0" />
-          <Row label="Sinkronisasi bot" value="Aktif" last />
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel} accessibilityRole="header">Connected accounts</Text>
+          <SettingsRow
+            icon="paper-plane-outline"
+            title={profileReady && user?.telegram_linked ? 'New Telegram link code' : 'Hubungkan akun Telegram'}
+            hint={!profileReady
+              ? profileStatus
+              : user?.telegram_linked
+              ? 'Connected. Request a new code to switch Telegram accounts.'
+              : 'Not linked. Request a code, then send /link <code> to Bot04.'}
+            onPress={handleLinkTelegram}
+            disabled={profileActionsDisabled}
+            busy={linking}
+          />
+          {(profileReady || unlinking) && user?.telegram_linked ? (
+            <SettingsRow
+              icon="unlink-outline"
+              title="Putuskan tautan Telegram"
+              hint="Your financial records stay intact."
+              onPress={handleUnlinkTelegram}
+              disabled={profileActionsDisabled}
+              busy={unlinking}
+            />
+          ) : null}
+          <SettingsRow
+            icon="logo-google"
+            title={googleTitle}
+            hint={googleHint}
+            onPress={googleLinkable && !user?.google_linked ? () => {
+              if (!canUseProfile()) return;
+              googleSheetOpen.current = true;
+              setLinkSheetVisible(true);
+            } : undefined}
+            disabled={profileActionsDisabled}
+            complete={profileReady && !!user?.google_linked}
+            last
+          />
         </View>
-      </FadeIn>
 
-      <FadeIn delay={240}>
-        <Button
-          title="Keluar dari akun"
-          variant="danger"
-          icon="log-out-outline"
-          onPress={handleLogout}
-          style={styles.logout}
-        />
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel} accessibilityRole="header">Otomatisasi</Text>
+          <SettingsRow
+            icon="repeat-outline"
+            title="Transaksi berulang"
+            hint="Jadwal pemasukan, pengeluaran, dan investasi otomatis"
+            onPress={() => router.push('/recurring')}
+            disabled={accountBusy}
+            last
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel} accessibilityRole="header">Preferences & app</Text>
+          <DetailRow label="Mata uang" value={user?.currency || (profileLoading ? 'Loading...' : 'Not available')} stacked={stackDetails} />
+          <DetailRow label="Zona waktu" value={user?.timezone || (profileLoading ? 'Loading...' : 'Not available')} stacked={stackDetails} />
+          <DetailRow label="Versi" value="1.0.0" stacked={stackDetails} last />
+        </View>
+
+        <View style={styles.logout}>
+          <SettingsRow
+            icon="log-out-outline"
+            title="Keluar dari akun"
+            onPress={handleLogout}
+            disabled={accountBusy}
+            busy={loggingOut}
+            last
+          />
+        </View>
+
+        <View style={styles.dangerArea}>
+          <Text style={styles.sectionLabel} accessibilityRole="header">Permanent deletion</Text>
+          <SettingsRow
+            icon="trash-outline"
+            title="Delete account"
+            hint="Permanently delete your account and all financial records."
+            onPress={() => {
+              if (canUseProfile()) router.push('/delete-account');
+            }}
+            disabled={profileActionsDisabled}
+            danger
+            last
+          />
+        </View>
       </FadeIn>
 
       <LinkGoogleSheet
         visible={linkSheetVisible}
-        onClose={() => setLinkSheetVisible(false)}
+        onClose={() => {
+          googleSheetOpen.current = false;
+          if (mounted.current) setLinkSheetVisible(false);
+        }}
         onLinked={(linkedUser) => {
+          if (!mounted.current || !focused.current) return;
+          profileRequest.current += 1;
+          profileReadyRef.current = true;
           setUser(linkedUser);
+          setError(null);
+          setProfileLoading(false);
+          googleSheetOpen.current = false;
           setLinkSheetVisible(false);
         }}
       />
@@ -339,16 +392,74 @@ export default function SettingsScreen() {
   );
 }
 
-function Row({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
+type SettingsRowProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  hint?: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  complete?: boolean;
+  danger?: boolean;
+  last?: boolean;
+};
+
+function SettingsRow({ icon, title, hint, onPress, disabled = false, busy = false, complete = false, danger = false, last = false }: SettingsRowProps) {
+  const inactive = disabled || busy;
+  const color = danger ? Colors.danger : inactive && onPress ? Colors.inkMuted : Colors.inkSoft;
+  const content = (
+    <>
+      <View style={styles.rowIcon} accessible={false} importantForAccessibility="no-hide-descendants">
+        <Ionicons name={icon} size={20} color={color} />
+      </View>
+      <View style={styles.navBody}>
+        <Text style={[styles.navTitle, danger && styles.dangerTitle, inactive && onPress && styles.disabledTitle]}>{title}</Text>
+        {hint ? <Text style={styles.navHint}>{hint}</Text> : null}
+      </View>
+      <View style={styles.rowAccessory} accessible={false} importantForAccessibility="no-hide-descendants">
+        {busy ? <ActivityIndicator size="small" color={color} /> : onPress ? (
+          <Ionicons name="chevron-forward" size={18} color={color} />
+        ) : complete ? (
+          <Ionicons name="checkmark-circle-outline" size={20} color={Colors.inkSoft} />
+        ) : null}
+      </View>
+    </>
+  );
+
+  return onPress ? (
+    <Pressable
+      onPress={() => { if (!inactive) return onPress(); }}
+      disabled={inactive}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled: inactive, busy }}
+      style={({ pressed }) => [styles.navRow, last && styles.lastRow, pressed && styles.pressed]}
+    >
+      {content}
+    </Pressable>
+  ) : (
+    <View style={[styles.navRow, last && styles.lastRow]} accessible accessibilityLabel={hint ? `${title}. ${hint}` : title}>
+      {content}
+    </View>
+  );
+}
+
+function DetailRow({ label, value, stacked, last = false }: { label: string; value: string; stacked: boolean; last?: boolean }) {
   return (
-    <View style={[styles.row, last && styles.lastRow]}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
+    <View style={[styles.detailRow, stacked && styles.stackedDetail, last && styles.lastRow]}>
+      <Text style={[styles.rowLabel, stacked && styles.stackedValue]}>{label}</Text>
+      <Text style={[styles.rowValue, stacked && styles.stackedValue]}>{value}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+  },
   title: {
     ...Type.h1,
     marginBottom: Space.lg,
@@ -357,86 +468,71 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.md,
-    paddingBottom: Space.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    padding: Space.lg,
+    borderRadius: Radius.block,
+    backgroundColor: Colors.surfaceAlt,
     marginBottom: Space.xl,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.inkTint,
+    minWidth: 56,
+    minHeight: 56,
+    padding: Space.sm,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   avatarText: {
     fontFamily: Fonts.serif,
-    fontSize: 24,
+    fontSize: 28,
     color: Colors.ink,
   },
   profileInfo: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: Space.xs,
   },
   userName: {
-    ...Type.title,
+    ...Type.h2,
   },
   userEmail: {
+    ...Type.caption,
+    color: Colors.inkSoft,
+  },
+  profileStatus: {
     ...Type.caption,
   },
   skeletonLine: {
     marginTop: Space.xs,
   },
-  sectionLabel: {
-    ...Type.micro,
-    textTransform: 'uppercase',
-    marginBottom: Space.sm,
-  },
-  block: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.line,
-    borderRadius: 10,
-    paddingHorizontal: Space.lg,
+  section: {
     marginBottom: Space.xl,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Space.md,
-    minHeight: 48,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
-  },
-  lastRow: {
-    borderBottomWidth: 0,
-  },
-  rowLabel: {
-    ...Type.body,
-    color: Colors.inkSoft,
-  },
-  rowValue: {
-    ...Type.bodyStrong,
+  sectionLabel: {
+    ...Type.caption,
+    fontFamily: Fonts.semibold,
     color: Colors.ink,
-    flexShrink: 1,
-    textAlign: 'right',
+    marginBottom: Space.xs,
   },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.md,
-    minHeight: 58,
-    paddingVertical: Space.sm,
+    minHeight: 64,
+    paddingVertical: Space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
   },
-  linkButton: {
+  rowIcon: {
+    width: 24,
+    alignItems: 'center',
     flexShrink: 0,
   },
-  lastNavRow: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.line,
+  rowAccessory: {
+    width: 20,
+    alignItems: 'center',
+    flexShrink: 0,
   },
   navBody: {
     flex: 1,
@@ -444,20 +540,72 @@ const styles = StyleSheet.create({
   },
   navTitle: {
     ...Type.bodyStrong,
-    color: Colors.ink,
   },
   dangerTitle: {
-    ...Type.bodyStrong,
     color: Colors.danger,
+  },
+  disabledTitle: {
+    color: Colors.inkMuted,
   },
   navHint: {
     ...Type.caption,
-    marginTop: 2,
+    marginTop: Space.xs,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    minHeight: 48,
+    paddingVertical: Space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  stackedDetail: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: Space.xs,
+  },
+  rowLabel: {
+    ...Type.body,
+    color: Colors.inkSoft,
+    flex: 1,
+    minWidth: 0,
+  },
+  rowValue: {
+    ...Type.bodyStrong,
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'right',
+  },
+  stackedValue: {
+    flex: 0,
+    textAlign: 'left',
+  },
+  lastRow: {
+    borderBottomWidth: 0,
   },
   pressed: {
-    opacity: 0.7,
+    backgroundColor: Colors.inkTint,
+  },
+  errorPanel: {
+    paddingHorizontal: Space.lg,
+    paddingTop: Space.md,
+    borderRadius: Radius.block,
+    backgroundColor: Colors.dangerTint,
+    marginBottom: Space.xl,
+  },
+  errorText: {
+    ...Type.body,
+    color: Colors.danger,
   },
   logout: {
-    marginTop: Space.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.line,
+  },
+  dangerArea: {
+    marginTop: Space.xl,
+    padding: Space.lg,
+    borderRadius: Radius.block,
+    backgroundColor: Colors.dangerTint,
   },
 });
