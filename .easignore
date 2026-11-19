@@ -2,7 +2,8 @@
 # It replaces every .gitignore for the upload. Keep only the standalone app.
 # If mobile later imports a workspace package, explicitly include that package.
 /*
-!/mobile/
+!/mobile
+!/mobile/**
 !/.easignore
 
 # Dependencies are installed on EAS. Never upload local caches or outputs.
