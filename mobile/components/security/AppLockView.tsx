@@ -495,11 +495,11 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
                 ? 'Gambar pola kunci'
                 : 'Masukkan PIN'}
             </Text>
-            <Text style={styles.subtitle}>
-              {unlockMethod === 'pattern' && lockState.patternEnabled
-                ? 'Connect at least four dots, then lift your finger to unlock automatically.'
-                : 'Masukkan PIN 6 digit untuk membuka catatan keuanganmu.'}
-            </Text>
+            {unlockMethod !== 'pattern' || !lockState.patternEnabled ? (
+              <Text style={styles.subtitle}>
+                Masukkan PIN 6 digit untuk membuka catatan keuanganmu.
+              </Text>
+            ) : null}
 
             {inCooldown ? (
               <View style={styles.cooldownBanner} accessibilityLiveRegion="polite">
@@ -520,6 +520,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
             {unlockMethod === 'pattern' && lockState.patternEnabled ? (
               <PatternInput
                 value={pattern}
+                showClearButton={false}
                 showLines={lockState.patternLinesVisible !== false}
                 onComplete={(candidate) => {
                   if (patternGeneration !== patternGenerationRef.current) return;

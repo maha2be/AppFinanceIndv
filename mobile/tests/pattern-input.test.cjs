@@ -720,6 +720,31 @@ function nodeAppearance(grid) {
   });
 }
 
+test('unlock can hide the repeat button while release completion and default setup clearing remain available', () => {
+  const completed = [];
+  const grid = createPatternInput({ showClearButton: false, onComplete: (pattern) => completed.push(Array.from(pattern)) });
+  const repeatIsHidden = () => assert.equal(byLabel(grid.renderer.tree, 'Hapus pola'), undefined);
+  repeatIsHidden();
+  grid.draw(40, 40);
+  grid.move(200, 40);
+  grid.move(200, 120);
+  repeatIsHidden();
+  grid.release();
+  repeatIsHidden();
+  assert.deepEqual(completed, [[0, 1, 2, 5]]);
+  grid.draw(200, 200);
+  grid.move(40, 200);
+  grid.move(40, 120);
+  repeatIsHidden();
+  grid.release();
+  assert.deepEqual(completed, [[0, 1, 2, 5], [8, 7, 6, 3]], 'another drag replaces the previous pattern without a repeat button');
+  grid.renderer.update({ showClearButton: undefined });
+  assert.ok(byLabel(grid.renderer.tree, 'Hapus pola'), 'setup keeps its repeat button by default');
+  grid.clear();
+  assert.deepEqual(grid.value(), []);
+  grid.renderer.unmount();
+});
+
 test('hidden patterns keep every outer node and inner dot identical to empty through release and retries', () => {
   const completed = [];
   const drawingChanges = [];

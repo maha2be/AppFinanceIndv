@@ -196,6 +196,7 @@ test('pattern unlock never renders a submit button in empty, drawing, complete, 
     const { harness, state, calls } = unlockHarness(t, { patternResult: false });
     await harness.mount();
     assert.ok(harness.byLabel('Buka kunci'), 'PIN mode retains its submit button');
+    assert.ok(harness.textMatching(/Masukkan PIN 6 digit untuk membuka catatan keuanganmu/), 'PIN keeps its existing instruction');
     await harness.press('Gunakan pola kunci');
     if (phase === 'drawing' || phase === 'complete') drawing(harness, true);
     if (phase === 'drawing' || phase === 'complete') harness.patternChange('Pola buka kunci aplikasi', PATTERN);
@@ -213,6 +214,8 @@ test('pattern unlock never renders a submit button in empty, drawing, complete, 
     if (phase === 'cooldown') state.retryAt = now + 30_000;
     if (phase === 'busy') state.busy = true;
     harness.flush();
+    assert.equal(harness.byLabel('Pola buka kunci aplikasi').props.showClearButton, false, `${phase} must not render the repeat button`);
+    assert.equal(harness.textMatching(/Connect at least four dots/), undefined, `${phase} must not render the removed instruction`);
     assert.equal(harness.byLabel('Buka kunci dengan pola'), undefined, `${phase} must not render pattern submit`);
     assert.equal(harness.byLabel('Buka kunci'), undefined, `${phase} must not render PIN submit in pattern mode`);
     assert.ok(harness.byLabel('Gunakan PIN 6 digit'), `${phase} retains the PIN fallback`);

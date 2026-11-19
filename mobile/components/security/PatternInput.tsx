@@ -19,6 +19,8 @@ export interface PatternInputProps {
   onComplete?: (value: number[]) => void;
   /** Hide connecting segments and selected-dot feedback without changing gesture handling. */
   showLines?: boolean;
+  /** Keep repeat controls available for setup without requiring them on unlock. */
+  showClearButton?: boolean;
   disabled?: boolean;
   label?: string;
   hint?: string;
@@ -93,6 +95,7 @@ export function PatternInput({
   onDrawingChange,
   onComplete,
   showLines = true,
+  showClearButton = true,
   disabled = false,
   label,
   hint,
@@ -317,20 +320,22 @@ export function PatternInput({
             ? `${value.length} titik dipilih (minimal 4 titik)`
             : `${value.length} titik dipilih`}
         </Text>
-        <Pressable
-          onPress={handleClear}
-          disabled={disabled || value.length === 0}
-          accessibilityRole="button"
-          accessibilityLabel="Hapus pola"
-          accessibilityState={{ disabled: disabled || value.length === 0 }}
-          style={({ pressed }) => [
-            styles.clearButton,
-            (disabled || value.length === 0) && styles.controlDisabled,
-            pressed && !disabled && value.length > 0 && styles.clearButtonPressed,
-          ]}
-        >
-          <Text style={styles.clearButtonText}>Ulangi pola</Text>
-        </Pressable>
+        {showClearButton ? (
+          <Pressable
+            onPress={handleClear}
+            disabled={disabled || value.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel="Hapus pola"
+            accessibilityState={{ disabled: disabled || value.length === 0 }}
+            style={({ pressed }) => [
+              styles.clearButton,
+              (disabled || value.length === 0) && styles.controlDisabled,
+              pressed && !disabled && value.length > 0 && styles.clearButtonPressed,
+            ]}
+          >
+            <Text style={styles.clearButtonText}>Ulangi pola</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <Text style={styles.a11yCaption}>
