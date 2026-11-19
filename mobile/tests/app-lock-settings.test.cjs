@@ -316,3 +316,49 @@ test('backgrounding the app clears wizard drafts and secrets', async () => {
   assert.equal(calls.setAppLockPattern.length, 0);
   assert.ok(harness.byLabel('Atur pola kunci'), 'summary is restored');
 });
+
+test('both pattern stages suspend page scrolling during drawing and restore it on release or exit', async (t) => {
+  const { harness } = createSettingsHarness();
+  t.after(() => harness.unmount());
+  await harness.mount();
+  const scrolling = () => harness.tree.props.scrollEnabled;
+  assert.equal(scrolling(), true);
+  await startSetup(harness);
+  for (const label of ['Pola baru 3x3', 'Konfirmasi pola baru 3x3']) {
+    harness.byLabel(label).props.onDrawingChange(true);
+    harness.flush();
+    assert.equal(scrolling(), false, label);
+    harness.patternChange(label, PATTERN);
+    assert.equal(scrolling(), false, 'node updates must not resume scrolling');
+    harness.byLabel(label).props.onDrawingChange(false);
+    harness.flush();
+    assert.equal(scrolling(), true, 'lifting the finger restores scrolling');
+    if (label === 'Pola baru 3x3') await harness.press('Lanjut ke konfirmasi pola');
+  }
+  const staleDrawing = harness.byLabel('Konfirmasi pola baru 3x3').props.onDrawingChange;
+  staleDrawing(true);
+  harness.flush();
+  await harness.press('Batal');
+  assert.equal(scrolling(), true);
+  staleDrawing(true);
+  harness.flush();
+  assert.equal(scrolling(), true, 'an obsolete grid cannot freeze the overview');
+});
+
+test('privacy lifecycle clearing restores scrolling while a pattern gesture is active', async (t) => {
+  for (const reason of ['background', 'covered', 'locked']) {
+    const { harness, lockState } = createSettingsHarness();
+    t.after(() => harness.unmount());
+    await harness.mount();
+    await startSetup(harness);
+    harness.byLabel('Pola baru 3x3').props.onDrawingChange(true);
+    harness.flush();
+    assert.equal(harness.tree.props.scrollEnabled, false);
+    if (reason === 'background') harness.appState.emit('background');
+    else lockState[reason] = true;
+    harness.flush();
+    assert.equal(harness.tree.props.scrollEnabled, true, reason);
+    assert.equal(patternInputs(harness).length, 0);
+    harness.unmount();
+  }
+});

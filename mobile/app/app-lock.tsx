@@ -60,6 +60,7 @@ export default function AppLockSettingsScreen() {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [checkingBiometrics, setCheckingBiometrics] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [patternDrawing, setPatternDrawing] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const newPinRef = useRef('');
@@ -95,6 +96,7 @@ export default function AppLockSettingsScreen() {
       setNewPattern([]);
       setConfirmPattern([]);
       setPatternStep('summary');
+      setPatternDrawing(false);
     }
   }, [clearPinFields]);
 
@@ -196,6 +198,11 @@ export default function AppLockSettingsScreen() {
   const isCurrentAction = (ticket: number, expectedView: ManagementView) =>
     mountedRef.current && focusedRef.current && foregroundRef.current &&
     ticket === actionGenerationRef.current && viewRef.current === expectedView;
+
+  const handlePatternDrawingChange = useCallback((drawing: boolean) => {
+    if (!mountedRef.current) return;
+    setPatternDrawing(drawing && focusedRef.current && foregroundRef.current && viewRef.current === 'pattern');
+  }, []);
 
   const handleBack = () => {
     if (!canNavigate()) return;
@@ -379,6 +386,7 @@ export default function AppLockSettingsScreen() {
     setConfirmPattern([]);
     patternStepRef.current = 'repeat';
     setPatternStep('repeat');
+    setPatternDrawing(false);
   };
   const handleBackToDrawPattern = () => {
     if (!canManage('pattern')) return;
@@ -521,7 +529,7 @@ export default function AppLockSettingsScreen() {
     : 'Kunci aplikasi';
 
   return (
-    <Screen bottomInset keyboardBehavior="padding" contentStyle={styles.screenContent}>
+    <Screen bottomInset keyboardBehavior="padding" contentStyle={styles.screenContent} scrollEnabled={!patternDrawing}>
       <View style={styles.header}>
         <Pressable
           onPress={handleBack}
@@ -629,6 +637,7 @@ export default function AppLockSettingsScreen() {
                     label={lockState.patternEnabled ? 'Gambar pola baru (4-9 titik)' : 'Buat pola baru (4-9 titik)'}
                     hint="Sentuh salah satu titik lalu tarik garis tanpa melepas jari."
                     value={newPattern}
+                    onDrawingChange={handlePatternDrawingChange}
                     onChange={(next) => {
                       if (!canManage('pattern') || patternStepRef.current !== 'draw') return;
                       setError(null);
@@ -648,6 +657,7 @@ export default function AppLockSettingsScreen() {
                     label="Ulangi pola baru untuk konfirmasi"
                     hint="Tarik pola yang sama persis seperti langkah sebelumnya."
                     value={confirmPattern}
+                    onDrawingChange={handlePatternDrawingChange}
                     onChange={(next) => {
                       if (!canManage('pattern') || patternStepRef.current !== 'repeat') return;
                       setError(null);

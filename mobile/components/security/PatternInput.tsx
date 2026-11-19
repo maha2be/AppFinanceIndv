@@ -13,6 +13,8 @@ import { appendPatternNode } from '../../utils/lockPattern';
 export interface PatternInputProps {
   value: number[];
   onChange: (value: number[]) => void;
+  /** Let a scrollable parent suspend scrolling while a node-started drag is active. */
+  onDrawingChange?: (drawing: boolean) => void;
   disabled?: boolean;
   label?: string;
   hint?: string;
@@ -84,6 +86,7 @@ function samePattern(left: readonly number[], right: readonly number[]): boolean
 export function PatternInput({
   value,
   onChange,
+  onDrawingChange,
   disabled = false,
   label,
   hint,
@@ -93,20 +96,31 @@ export function PatternInput({
   const [isDrawing, setIsDrawing] = useState(false);
   const activePatternRef = useRef<number[]>(value);
   const drawingRef = useRef(false);
+  const drawingChangeRef = useRef(onDrawingChange);
 
   activePatternRef.current = value;
+  drawingChangeRef.current = onDrawingChange;
+
+  const setDrawing = useCallback((drawing: boolean) => {
+    if (drawingRef.current === drawing) return;
+    drawingRef.current = drawing;
+    setIsDrawing(drawing);
+    drawingChangeRef.current?.(drawing);
+  }, []);
 
   useEffect(() => () => {
     activePatternRef.current = [];
-    drawingRef.current = false;
+    if (drawingRef.current) {
+      drawingRef.current = false;
+      drawingChangeRef.current?.(false);
+    }
   }, []);
 
   useEffect(() => {
     if (disabled || value.length === 0) {
-      drawingRef.current = false;
-      setIsDrawing(false);
+      setDrawing(false);
     }
-  }, [disabled, value.length]);
+  }, [disabled, value.length, setDrawing]);
 
   const handleBoardLayout = useCallback((event: LayoutChangeEvent) => {
     const width = event.nativeEvent.layout.width;
@@ -138,14 +152,13 @@ export function PatternInput({
       const { locationX, locationY } = event.nativeEvent;
       const hit = resolveHitNode(locationX, locationY, boardSize);
       if (hit !== null) {
-        drawingRef.current = true;
-        setIsDrawing(true);
+        setDrawing(true);
         const next = appendPatternNode([], hit);
         activePatternRef.current = next;
         onChange(next);
       }
     },
-    [boardSize, disabled, onChange]
+    [boardSize, disabled, onChange, setDrawing]
   );
 
   const handleResponderMove = useCallback(
@@ -160,31 +173,32 @@ export function PatternInput({
   );
 
   const handleResponderRelease = useCallback(() => {
-    drawingRef.current = false;
-    setIsDrawing(false);
-  }, []);
+    setDrawing(false);
+  }, [setDrawing]);
 
   const handleResponderTerminate = useCallback(() => {
     if (!drawingRef.current) {
       return;
     }
-    drawingRef.current = false;
-    setIsDrawing(false);
+    setDrawing(false);
     if (activePatternRef.current.length > 0) {
       activePatternRef.current = [];
       onChange([]);
     }
-  }, [onChange]);
+  }, [onChange, setDrawing]);
 
   const handleClear = useCallback(() => {
     if (disabled || value.length === 0) {
       return;
     }
-    drawingRef.current = false;
-    setIsDrawing(false);
+    setDrawing(false);
     activePatternRef.current = [];
     onChange([]);
-  }, [disabled, onChange, value.length]);
+  }, [disabled, onChange, value.length, setDrawing]);
+
+  const shouldStartDrawing = useCallback((event: GestureResponderEvent) =>
+    !disabled && resolveHitNode(event.nativeEvent.locationX, event.nativeEvent.locationY, boardSize) !== null,
+  [boardSize, disabled]);
 
   const selectedSet = new Set(value);
   const startNode = value.length > 0 ? value[0] : null;
@@ -200,14 +214,8 @@ export function PatternInput({
           accessible
           accessibilityLabel={`${accessibilityLabel}. ${value.length} dari minimal 4 titik terhubung. Tarik garis antar titik, atau gunakan PIN 6 digit sebagai alternatif aksesibel jika gestur tarik sulit dilakukan.`}
           accessibilityHint="Sentuh salah satu titik lalu tarik tanpa melepas jari untuk menghubungkan minimal 4 titik."
-          onStartShouldSetResponder={(event) =>
-            !disabled &&
-            resolveHitNode(
-              event.nativeEvent.locationX,
-              event.nativeEvent.locationY,
-              boardSize
-            ) !== null
-          }
+          onStartShouldSetResponder={shouldStartDrawing}
+          onStartShouldSetResponderCapture={shouldStartDrawing}
           onMoveShouldSetResponder={() => false}
           onResponderTerminationRequest={() => false}
           onResponderGrant={handleResponderGrant}

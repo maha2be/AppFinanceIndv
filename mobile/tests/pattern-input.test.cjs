@@ -572,3 +572,59 @@ test('unmount clears the active pattern and drawing refs', () => {
   staleBoard.props.onResponderMove({ nativeEvent: { locationX: 120, locationY: 120 } });
   assert.equal(grid.changes.length, before, 'a stale handler after unmount must not emit a change');
 });
+
+test('vertical drags suspend parent scrolling only until the gesture ends', () => {
+  for (const [startY, endY, expected] of [[40, 200, [0, 3, 6, 7]], [200, 40, [6, 3, 0, 1]]]) {
+    const grid = createPatternInput();
+    const drawingChanges = [];
+    grid.renderer.update({ onDrawingChange: (drawing) => drawingChanges.push(drawing) });
+    const event = { nativeEvent: { locationX: 40, locationY: startY } };
+    assert.equal(grid.board().props.onStartShouldSetResponderCapture(event), true);
+    grid.draw(40, startY);
+    assert.deepEqual(drawingChanges, [true], 'a node-started drag must suspend scrolling immediately');
+    assert.equal(grid.board().props.onResponderTerminationRequest(), false);
+    grid.move(40, endY);
+    grid.move(120, endY);
+    assert.deepEqual(grid.value(), expected, 'vertical movement must keep collecting pattern nodes');
+    assert.deepEqual(drawingChanges, [true], 'moving must not release the scroll lock');
+    grid.release();
+    assert.deepEqual(drawingChanges, [true, false]);
+    assert.deepEqual(grid.value(), expected, 'release preserves the completed pattern');
+    grid.renderer.unmount();
+    assert.deepEqual(drawingChanges, [true, false], 'cleanup after release must not notify twice');
+  }
+});
+
+test('every interrupted drawing path restores parent scrolling exactly once', () => {
+  for (const reason of ['terminate', 'clear', 'disable', 'empty', 'unmount']) {
+    const grid = createPatternInput();
+    const drawingChanges = [];
+    grid.renderer.update({ onDrawingChange: (drawing) => drawingChanges.push(drawing) });
+    grid.draw(40, 40);
+    grid.move(40, 200);
+    if (reason === 'terminate') grid.terminate();
+    else if (reason === 'clear') grid.clear();
+    else if (reason === 'disable') grid.renderer.update({ disabled: true });
+    else if (reason === 'empty') grid.renderer.update({ value: [] });
+    else grid.renderer.unmount();
+    assert.deepEqual(drawingChanges, [true, false], reason);
+    grid.renderer.unmount();
+    assert.deepEqual(drawingChanges, [true, false], `${reason} must not release twice`);
+  }
+});
+
+test('blank-space and disabled touches never suspend parent scrolling', () => {
+  const grid = createPatternInput();
+  const drawingChanges = [];
+  grid.renderer.update({ onDrawingChange: (drawing) => drawingChanges.push(drawing) });
+  assert.equal(grid.board().props.onStartShouldSetResponderCapture({ nativeEvent: { locationX: 10, locationY: 10 } }), false);
+  grid.draw(10, 10);
+  grid.move(40, 200);
+  grid.release();
+  assert.deepEqual(drawingChanges, []);
+  grid.renderer.update({ disabled: true });
+  assert.equal(grid.board().props.onStartShouldSetResponderCapture({ nativeEvent: { locationX: 40, locationY: 40 } }), false);
+  grid.draw(40, 40);
+  assert.deepEqual(drawingChanges, []);
+  grid.renderer.unmount();
+});
