@@ -720,6 +720,27 @@ function nodeAppearance(grid) {
   });
 }
 
+test('unlock can hide the visible fallback caption without removing accessible grid instructions or setup guidance', () => {
+  const grid = createPatternInput();
+  const visibleCaption = () => elements(grid.renderer.tree).some((element) =>
+    element.type === 'Text' && element.children.some((child) =>
+      typeof child === 'string' && child.includes('Kesulitan menggambar pola?')));
+  assert.equal(visibleCaption(), true, 'setup shows the caption by default');
+  grid.renderer.update({ showAccessibilityCaption: false });
+  assert.equal(visibleCaption(), false);
+  assert.match(grid.board().props.accessibilityLabel, /PIN 6 digit/);
+  assert.match(grid.board().props.accessibilityHint, /minimal 4 titik/);
+  grid.draw(40, 40);
+  grid.move(200, 40);
+  grid.move(200, 120);
+  grid.release();
+  assert.equal(visibleCaption(), false, 'drawing and release cannot restore the removed caption');
+  assert.deepEqual(grid.value(), [0, 1, 2, 5]);
+  grid.renderer.update({ showAccessibilityCaption: undefined });
+  assert.equal(visibleCaption(), true, 'default setup guidance remains available');
+  grid.renderer.unmount();
+});
+
 test('unlock can hide the repeat button while release completion and default setup clearing remain available', () => {
   const completed = [];
   const grid = createPatternInput({ showClearButton: false, onComplete: (pattern) => completed.push(Array.from(pattern)) });

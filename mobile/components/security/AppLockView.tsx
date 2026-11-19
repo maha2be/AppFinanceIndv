@@ -521,6 +521,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
               <PatternInput
                 value={pattern}
                 showClearButton={false}
+                showAccessibilityCaption={false}
                 showLines={lockState.patternLinesVisible !== false}
                 onComplete={(candidate) => {
                   if (patternGeneration !== patternGenerationRef.current) return;

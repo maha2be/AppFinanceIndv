@@ -215,6 +215,7 @@ test('pattern unlock never renders a submit button in empty, drawing, complete, 
     if (phase === 'busy') state.busy = true;
     harness.flush();
     assert.equal(harness.byLabel('Pola buka kunci aplikasi').props.showClearButton, false, `${phase} must not render the repeat button`);
+    assert.equal(harness.byLabel('Pola buka kunci aplikasi').props.showAccessibilityCaption, false, `${phase} must not render the visible fallback caption`);
     assert.equal(harness.textMatching(/Connect at least four dots/), undefined, `${phase} must not render the removed instruction`);
     assert.equal(harness.byLabel('Buka kunci dengan pola'), undefined, `${phase} must not render pattern submit`);
     assert.equal(harness.byLabel('Buka kunci'), undefined, `${phase} must not render PIN submit in pattern mode`);

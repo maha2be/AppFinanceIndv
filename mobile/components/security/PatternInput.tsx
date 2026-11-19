@@ -21,6 +21,8 @@ export interface PatternInputProps {
   showLines?: boolean;
   /** Keep repeat controls available for setup without requiring them on unlock. */
   showClearButton?: boolean;
+  /** Visible setup guidance is independent of the grid's accessible instructions. */
+  showAccessibilityCaption?: boolean;
   disabled?: boolean;
   label?: string;
   hint?: string;
@@ -96,6 +98,7 @@ export function PatternInput({
   onComplete,
   showLines = true,
   showClearButton = true,
+  showAccessibilityCaption = true,
   disabled = false,
   label,
   hint,
@@ -338,9 +341,11 @@ export function PatternInput({
         ) : null}
       </View>
 
-      <Text style={styles.a11yCaption}>
-        Kesulitan menggambar pola? Gunakan PIN 6 digit sebagai alternatif yang ramah pembaca layar.
-      </Text>
+      {showAccessibilityCaption ? (
+        <Text style={styles.a11yCaption}>
+          Kesulitan menggambar pola? Gunakan PIN 6 digit sebagai alternatif yang ramah pembaca layar.
+        </Text>
+      ) : null}
     </View>
   );
 }
