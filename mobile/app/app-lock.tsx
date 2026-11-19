@@ -1,15 +1,10 @@
 import { AppAlert as Alert } from '../services/appAlert';
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   AppState,
   AppStateStatus,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -18,9 +13,9 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Fonts, Radius, Space, Type } from '../utils/theme';
+import { useReducedMotion } from '../utils/motion';
 import { Screen } from '../components/ui/Screen';
 import { Input } from '../components/ui/Input';
-import { Button } from '../components/ui/Button';
 import { PatternInput } from '../components/security/PatternInput';
 import { isValidLockPattern } from '../utils/lockPattern';
 import {
@@ -36,7 +31,7 @@ import {
 } from '../services/appLock';
 
 const PIN_PATTERN = /^[0-9]{6}$/;
-
+type ManagementView = 'overview' | 'enable' | 'change-pin' | 'biometrics' | 'pattern' | 'remove-pattern' | 'disable';
 type PatternSetupStep = 'summary' | 'draw' | 'repeat';
 
 function sanitizePinInput(value: string): string {
@@ -44,33 +39,23 @@ function sanitizePinInput(value: string): string {
 }
 
 function patternsMatch(left: readonly number[], right: readonly number[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
+  if (left.length !== right.length) return false;
   for (let i = 0; i < left.length; i += 1) {
-    if (left[i] !== right[i]) {
-      return false;
-    }
+    if (left[i] !== right[i]) return false;
   }
   return true;
 }
 
 export default function AppLockSettingsScreen() {
-  const lockState = useSyncExternalStore(
-    subscribeAppLock,
-    getAppLockState,
-    getAppLockState
-  );
-
+  const reducedMotion = useReducedMotion();
+  const lockState = useSyncExternalStore(subscribeAppLock, getAppLockState, getAppLockState);
+  const [view, setView] = useState<ManagementView>('overview');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [currentPin, setCurrentPin] = useState('');
-  const [changeNextPin, setChangeNextPin] = useState('');
-  const [changeConfirmPin, setChangeConfirmPin] = useState('');
   const [newPattern, setNewPattern] = useState<number[]>([]);
   const [confirmPattern, setConfirmPattern] = useState<number[]>([]);
   const [patternStep, setPatternStep] = useState<PatternSetupStep>('summary');
-
   const [error, setError] = useState<string | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [checkingBiometrics, setCheckingBiometrics] = useState(false);
@@ -80,171 +65,226 @@ export default function AppLockSettingsScreen() {
   const newPinRef = useRef('');
   const confirmPinRef = useRef('');
   const currentPinRef = useRef('');
-  const changeNextPinRef = useRef('');
-  const changeConfirmPinRef = useRef('');
   const newPatternRef = useRef<number[]>([]);
   const confirmPatternRef = useRef<number[]>([]);
+  const patternStepRef = useRef<PatternSetupStep>('summary');
+  const viewRef = useRef<ManagementView>('overview');
   const mountedRef = useRef(true);
+  const focusedRef = useRef(true);
+  const foregroundRef = useRef(AppState.currentState == null || AppState.currentState === 'active');
   const submitLockRef = useRef(false);
+  const actionGenerationRef = useRef(0);
 
-  const clearAllPinFields = useCallback(() => {
+  const clearPinFields = useCallback(() => {
     newPinRef.current = '';
     confirmPinRef.current = '';
     currentPinRef.current = '';
-    changeNextPinRef.current = '';
-    changeConfirmPinRef.current = '';
+    if (mountedRef.current) {
+      setNewPin('');
+      setConfirmPin('');
+      setCurrentPin('');
+    }
+  }, []);
+
+  const clearAllPinFields = useCallback(() => {
+    clearPinFields();
     newPatternRef.current = [];
     confirmPatternRef.current = [];
-    setNewPin('');
-    setConfirmPin('');
-    setCurrentPin('');
-    setChangeNextPin('');
-    setChangeConfirmPin('');
-    setNewPattern([]);
-    setConfirmPattern([]);
-    setPatternStep('summary');
-  }, []);
+    patternStepRef.current = 'summary';
+    if (mountedRef.current) {
+      setNewPattern([]);
+      setConfirmPattern([]);
+      setPatternStep('summary');
+    }
+  }, [clearPinFields]);
+
+  const returnToOverview = useCallback((message: string | null = null) => {
+    actionGenerationRef.current += 1;
+    viewRef.current = 'overview';
+    clearAllPinFields();
+    if (mountedRef.current) {
+      setView('overview');
+      setError(message);
+      Keyboard.dismiss();
+    }
+  }, [clearAllPinFields]);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      newPinRef.current = '';
-      confirmPinRef.current = '';
-      currentPinRef.current = '';
-      changeNextPinRef.current = '';
-      changeConfirmPinRef.current = '';
-      newPatternRef.current = [];
-      confirmPatternRef.current = [];
-    };
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      return () => {
-        clearAllPinFields();
-      };
-    }, [clearAllPinFields])
-  );
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'background' || nextState === 'inactive') {
-        clearAllPinFields();
-        setError(null);
-      }
-    });
-    return () => {
-      subscription.remove();
+      focusedRef.current = false;
+      actionGenerationRef.current += 1;
+      viewRef.current = 'overview';
+      clearAllPinFields();
     };
   }, [clearAllPinFields]);
 
+  useFocusEffect(useCallback(() => {
+    focusedRef.current = true;
+    return () => {
+      focusedRef.current = false;
+      returnToOverview();
+    };
+  }, [returnToOverview]));
+
   useEffect(() => {
-    if (!lockState.ready || lockState.locked || lockState.covered) {
-      clearAllPinFields();
-      setError(null);
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      foregroundRef.current = nextState === 'active';
+      if (nextState !== 'active') returnToOverview();
+    });
+    return () => subscription.remove();
+  }, [returnToOverview]);
+
+  useEffect(() => {
+    if (!lockState.ready || lockState.locked || lockState.covered || lockState.storageError) {
+      returnToOverview();
     }
-  }, [lockState.ready, lockState.locked, lockState.covered, clearAllPinFields]);
+  }, [lockState.ready, lockState.locked, lockState.covered, lockState.storageError, returnToOverview]);
 
   useEffect(() => {
     let active = true;
     if (!lockState.ready || !lockState.supported) {
       setBiometricAvailable(false);
       setCheckingBiometrics(false);
-      return () => {
-        active = false;
-      };
+      return () => { active = false; };
     }
-
     setCheckingBiometrics(true);
     getBiometricAvailability()
       .then((available) => {
-        if (active && mountedRef.current) {
-          setBiometricAvailable(Boolean(available));
-        }
+        if (active && mountedRef.current) setBiometricAvailable(Boolean(available));
       })
       .catch(() => {
-        if (active && mountedRef.current) {
-          setBiometricAvailable(false);
-        }
+        if (active && mountedRef.current) setBiometricAvailable(false);
       })
       .finally(() => {
-        if (active && mountedRef.current) {
-          setCheckingBiometrics(false);
-        }
+        if (active && mountedRef.current) setCheckingBiometrics(false);
       });
-
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [lockState.ready, lockState.supported, lockState.enabled, lockState.biometricsEnabled]);
 
   useEffect(() => {
-    if (!lockState.retryAt || lockState.retryAt <= Date.now()) {
-      return;
-    }
+    if (!lockState.retryAt || lockState.retryAt <= Date.now()) return;
     setNowMs(Date.now());
     const interval = setInterval(() => {
       const current = Date.now();
       setNowMs(current);
-      if (current >= lockState.retryAt) {
-        clearInterval(interval);
-      }
+      if (current >= lockState.retryAt) clearInterval(interval);
     }, 1000);
-    return () => {
-      clearInterval(interval);
-    };
+    return () => clearInterval(interval);
   }, [lockState.retryAt]);
 
-  const cooldownSeconds =
-    lockState.retryAt > nowMs ? Math.ceil((lockState.retryAt - nowMs) / 1000) : 0;
+  const cooldownSeconds = lockState.retryAt > nowMs ? Math.ceil((lockState.retryAt - nowMs) / 1000) : 0;
   const inCooldown = cooldownSeconds > 0;
-
-  useEffect(() => {
-    if (inCooldown) {
-      clearAllPinFields();
-    }
-  }, [inCooldown, clearAllPinFields]);
-
   const isBusy = lockState.busy || submitting;
 
-  const handleBack = () => {
-    clearAllPinFields();
-    router.back();
-  };
+  useEffect(() => {
+    if (inCooldown) returnToOverview();
+  }, [inCooldown, returnToOverview]);
 
-  const handleRetryHydrate = async () => {
-    if (submitLockRef.current || isBusy) {
+  const canNavigate = () => mountedRef.current && focusedRef.current && foregroundRef.current &&
+    !submitLockRef.current && !getAppLockState().busy;
+  const hasSafeDeviceState = () => {
+    const latest = getAppLockState();
+    return latest.ready && latest.supported && !latest.locked && !latest.covered && !latest.storageError;
+  };
+  const canManage = (expectedView: ManagementView) => {
+    const latest = getAppLockState();
+    return canNavigate() && hasSafeDeviceState() && latest.retryAt <= Date.now() &&
+      viewRef.current === expectedView && (expectedView === 'enable' ? !latest.enabled : latest.enabled);
+  };
+  const isCurrentAction = (ticket: number, expectedView: ManagementView) =>
+    mountedRef.current && focusedRef.current && foregroundRef.current &&
+    ticket === actionGenerationRef.current && viewRef.current === expectedView;
+
+  const handleBack = () => {
+    if (!canNavigate()) return;
+    if (viewRef.current !== 'overview') {
+      returnToOverview();
       return;
     }
+    returnToOverview();
+    router.back();
+  };
+  const handleCancel = () => {
+    if (canNavigate()) returnToOverview();
+  };
+  const openView = (nextView: ManagementView) => {
+    const latest = getAppLockState();
+    if (!canNavigate() || viewRef.current !== 'overview' || !hasSafeDeviceState() || latest.retryAt > Date.now()) return;
+    if (nextView === 'enable' ? latest.enabled : !latest.enabled) return;
+    returnToOverview();
+    viewRef.current = nextView;
+    setView(nextView);
+    if (nextView === 'pattern') {
+      patternStepRef.current = 'draw';
+      setPatternStep('draw');
+    }
+  };
+
+  const updatePin = (text: string, field: 'current' | 'new' | 'confirm') => {
+    if (!canManage(view)) return;
+    actionGenerationRef.current += 1;
+    setError(null);
+    const clean = sanitizePinInput(text);
+    if (field === 'current') {
+      currentPinRef.current = clean;
+      setCurrentPin(clean);
+    } else if (field === 'new') {
+      newPinRef.current = clean;
+      setNewPin(clean);
+    } else {
+      confirmPinRef.current = clean;
+      setConfirmPin(clean);
+    }
+  };
+  const startSubmission = () => {
     submitLockRef.current = true;
     setSubmitting(true);
     setError(null);
+    return ++actionGenerationRef.current;
+  };
+  const finishSubmission = () => {
+    submitLockRef.current = false;
+    if (mountedRef.current) setSubmitting(false);
+  };
+  const operationSucceeded = (ticket: number, expectedView: ManagementView, title: string, message: string) => {
+    if (!isCurrentAction(ticket, expectedView) || !hasSafeDeviceState()) return;
+    returnToOverview();
+    Alert.alert(title, message);
+  };
+  const operationFailed = (err: unknown, ticket: number, expectedView: ManagementView, fallback: string) => {
+    if (!isCurrentAction(ticket, expectedView)) return;
+    const message = err instanceof Error && err.message ? err.message : fallback;
+    const latest = getAppLockState();
+    const now = Date.now();
+    setNowMs(now);
+    if (!hasSafeDeviceState() || latest.retryAt > now) {
+      returnToOverview(message);
+    } else {
+      clearPinFields();
+      setError(message);
+    }
+  };
+
+  const handleRetryHydrate = async () => {
+    if (!canNavigate()) return;
+    const ticket = startSubmission();
     try {
       await hydrateAppLock();
     } catch (err) {
-      if (mountedRef.current) {
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Gagal memuat pengaturan kunci aplikasi.'
-        );
+      if (isCurrentAction(ticket, 'overview')) {
+        setError(err instanceof Error && err.message ? err.message : 'Gagal memuat pengaturan kunci aplikasi.');
       }
     } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-      submitLockRef.current = false;
+      finishSubmission();
     }
   };
 
   const handleEnableLock = async () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
+    if (!canManage('enable')) return;
     const pinCandidate = newPinRef.current;
     const confirmCandidate = confirmPinRef.current;
-
     if (!PIN_PATTERN.test(pinCandidate)) {
       setError('PIN harus terdiri dari tepat 6 digit angka.');
       return;
@@ -257,45 +297,22 @@ export default function AppLockSettingsScreen() {
       setError('PIN baru dan konfirmasi PIN tidak cocok.');
       return;
     }
-
-    submitLockRef.current = true;
-    setSubmitting(true);
-    setError(null);
+    const ticket = startSubmission();
     try {
       await enableAppLock(pinCandidate);
-      if (mountedRef.current) {
-        clearAllPinFields();
-        Alert.alert(
-          'Kunci aplikasi aktif',
-          'PIN 6 digit berhasil disimpan untuk melindungi aplikasi di perangkat ini.'
-        );
-      }
+      operationSucceeded(ticket, 'enable', 'Kunci aplikasi aktif', 'PIN 6 digit berhasil disimpan untuk melindungi aplikasi di perangkat ini.');
     } catch (err) {
-      if (mountedRef.current) {
-        clearAllPinFields();
-        setNowMs(Date.now());
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Gagal mengaktifkan kunci aplikasi.'
-        );
-      }
+      operationFailed(err, ticket, 'enable', 'Gagal mengaktifkan kunci aplikasi.');
     } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-      submitLockRef.current = false;
+      finishSubmission();
     }
   };
 
   const handleChangePin = async () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
+    if (!canManage('change-pin')) return;
     const currCandidate = currentPinRef.current;
-    const nextCandidate = changeNextPinRef.current;
-    const confirmCandidate = changeConfirmPinRef.current;
-
+    const nextCandidate = newPinRef.current;
+    const confirmCandidate = confirmPinRef.current;
     if (!PIN_PATTERN.test(currCandidate)) {
       setError('Masukkan PIN saat ini (6 digit).');
       return;
@@ -312,143 +329,76 @@ export default function AppLockSettingsScreen() {
       setError('PIN baru dan konfirmasi PIN baru tidak cocok.');
       return;
     }
-
-    submitLockRef.current = true;
-    setSubmitting(true);
-    setError(null);
+    const ticket = startSubmission();
     try {
       await changeAppLockPin(currCandidate, nextCandidate);
-      if (mountedRef.current) {
-        clearAllPinFields();
-        Alert.alert('PIN diperbarui', 'PIN kunci aplikasi berhasil diganti.');
-      }
+      operationSucceeded(ticket, 'change-pin', 'PIN diperbarui', 'PIN kunci aplikasi berhasil diganti.');
     } catch (err) {
-      if (mountedRef.current) {
-        clearAllPinFields();
-        setNowMs(Date.now());
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Gagal mengganti PIN kunci aplikasi.'
-        );
-      }
+      operationFailed(err, ticket, 'change-pin', 'Gagal mengganti PIN kunci aplikasi.');
     } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-      submitLockRef.current = false;
+      finishSubmission();
     }
   };
 
   const handleToggleBiometrics = async () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
+    if (!canManage('biometrics') || checkingBiometrics) return;
     const currCandidate = currentPinRef.current;
     if (!PIN_PATTERN.test(currCandidate)) {
       setError('Masukkan PIN saat ini (6 digit) untuk mengubah pengaturan biometrik.');
       return;
     }
-
-    const nextEnabled = !lockState.biometricsEnabled;
+    const nextEnabled = !getAppLockState().biometricsEnabled;
     if (nextEnabled && !biometricAvailable) {
       setError('Sidik jari / biometrik tidak tersedia atau belum terdaftar di perangkat ini.');
       return;
     }
-
-    submitLockRef.current = true;
-    setSubmitting(true);
-    setError(null);
+    const ticket = startSubmission();
     try {
       await setAppLockBiometrics(currCandidate, nextEnabled);
-      if (mountedRef.current) {
-        clearAllPinFields();
-        Alert.alert(
-          nextEnabled ? 'Biometrik diaktifkan' : 'Biometrik dinonaktifkan',
-          nextEnabled
-            ? 'Sidik jari / biometrik kini dapat digunakan untuk membuka kunci aplikasi.'
-            : 'Pembukaan kunci dengan sidik jari / biometrik telah dimatikan.'
-        );
-      }
+      operationSucceeded(
+        ticket, 'biometrics', nextEnabled ? 'Biometrik diaktifkan' : 'Biometrik dinonaktifkan',
+        nextEnabled
+          ? 'Sidik jari / biometrik kini dapat digunakan untuk membuka kunci aplikasi.'
+          : 'Pembukaan kunci dengan sidik jari / biometrik telah dimatikan.'
+      );
     } catch (err) {
-      if (mountedRef.current) {
-        clearAllPinFields();
-        setNowMs(Date.now());
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Gagal memperbarui pengaturan sidik jari / biometrik.'
-        );
-      }
+      operationFailed(err, ticket, 'biometrics', 'Gagal memperbarui pengaturan sidik jari / biometrik.');
     } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-      submitLockRef.current = false;
+      finishSubmission();
     }
-  };
-
-  const handleStartPatternSetup = () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
-    setError(null);
-    newPatternRef.current = [];
-    confirmPatternRef.current = [];
-    setNewPattern([]);
-    setConfirmPattern([]);
-    setPatternStep('draw');
   };
 
   const handleAdvancePatternToRepeat = () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
-    const nextCandidate = newPatternRef.current;
-    if (!isValidLockPattern(nextCandidate)) {
+    if (!canManage('pattern') || patternStepRef.current !== 'draw') return;
+    if (!isValidLockPattern(newPatternRef.current)) {
       setError('Pola baru harus menghubungkan minimal 4 titik.');
       return;
     }
     setError(null);
     confirmPatternRef.current = [];
     setConfirmPattern([]);
+    patternStepRef.current = 'repeat';
     setPatternStep('repeat');
   };
-
   const handleBackToDrawPattern = () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
+    if (!canManage('pattern')) return;
+    actionGenerationRef.current += 1;
+    clearAllPinFields();
     setError(null);
-    newPatternRef.current = [];
-    confirmPatternRef.current = [];
-    setNewPattern([]);
-    setConfirmPattern([]);
+    patternStepRef.current = 'draw';
     setPatternStep('draw');
   };
-
-  const handleCancelPatternSetup = () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
-    setError(null);
-    newPatternRef.current = [];
-    confirmPatternRef.current = [];
-    setNewPattern([]);
-    setConfirmPattern([]);
-    setPatternStep('summary');
-  };
-
   const handleSavePattern = async () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
+    if (!canManage('pattern') || patternStepRef.current !== 'repeat') return;
     const currCandidate = currentPinRef.current;
     const nextCandidate = newPatternRef.current;
     const confirmCandidate = confirmPatternRef.current;
-
     if (!isValidLockPattern(nextCandidate)) {
+      clearPinFields();
+      confirmPatternRef.current = [];
+      setConfirmPattern([]);
       setError('Pola baru harus menghubungkan minimal 4 titik.');
+      patternStepRef.current = 'draw';
       setPatternStep('draw');
       return;
     }
@@ -466,820 +416,580 @@ export default function AppLockSettingsScreen() {
       setError('Masukkan PIN saat ini (6 digit) untuk menyimpan pola kunci.');
       return;
     }
-
-    const wasEnabled = lockState.patternEnabled;
-    submitLockRef.current = true;
-    setSubmitting(true);
-    setError(null);
+    const wasEnabled = getAppLockState().patternEnabled;
+    const ticket = startSubmission();
     try {
       await setAppLockPattern(currCandidate, nextCandidate);
-      if (mountedRef.current) {
-        clearAllPinFields();
-        Alert.alert(
-          wasEnabled ? 'Pola kunci diperbarui' : 'Pola kunci diaktifkan',
-          'Pola 3x3 berhasil disimpan sebagai metode buka kunci pendamping PIN.'
-        );
-      }
+      operationSucceeded(
+        ticket, 'pattern', wasEnabled ? 'Pola kunci diperbarui' : 'Pola kunci diaktifkan',
+        'Pola 3x3 berhasil disimpan sebagai metode buka kunci pendamping PIN.'
+      );
     } catch (err) {
-      if (mountedRef.current) {
-        const latestState = getAppLockState();
-        const now = Date.now();
-        setNowMs(now);
-        if (
-          !latestState.ready ||
-          latestState.locked ||
-          latestState.covered ||
-          latestState.storageError ||
-          latestState.retryAt > now
-        ) {
-          clearAllPinFields();
-        } else {
-          newPinRef.current = '';
-          confirmPinRef.current = '';
-          currentPinRef.current = '';
-          changeNextPinRef.current = '';
-          changeConfirmPinRef.current = '';
-          setNewPin('');
-          setConfirmPin('');
-          setCurrentPin('');
-          setChangeNextPin('');
-          setChangeConfirmPin('');
-        }
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Gagal menyimpan pola kunci aplikasi.'
-        );
-      }
+      operationFailed(err, ticket, 'pattern', 'Gagal menyimpan pola kunci aplikasi.');
     } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-      submitLockRef.current = false;
+      finishSubmission();
     }
   };
 
-  const executeRemovePattern = async (verifiedCurrentPin: string) => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
-    submitLockRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await setAppLockPattern(verifiedCurrentPin, null);
-      if (mountedRef.current) {
-        clearAllPinFields();
-        Alert.alert(
-          'Pola kunci dihapus',
-          'Pembukaan kunci dengan pola telah dinonaktifkan. PIN 6 digit tetap aktif.'
-        );
-      }
-    } catch (err) {
-      if (mountedRef.current) {
-        clearAllPinFields();
-        setNowMs(Date.now());
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Gagal menghapus pola kunci aplikasi.'
-        );
-      }
-    } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-      submitLockRef.current = false;
-    }
-  };
-
-  const handleRemovePatternPrompt = () => {
-    if (submitLockRef.current || isBusy || inCooldown || !lockState.patternEnabled) {
-      return;
-    }
+  const executeRemovePattern = async (confirmationTicket: number) => {
+    if (!canManage('remove-pattern') || confirmationTicket !== actionGenerationRef.current || !getAppLockState().patternEnabled) return;
     const currCandidate = currentPinRef.current;
-    if (!PIN_PATTERN.test(currCandidate)) {
+    if (!PIN_PATTERN.test(currCandidate)) return;
+    const ticket = startSubmission();
+    clearPinFields();
+    try {
+      await setAppLockPattern(currCandidate, null);
+      operationSucceeded(ticket, 'remove-pattern', 'Pola kunci dihapus', 'Pembukaan kunci dengan pola telah dinonaktifkan. PIN 6 digit tetap aktif.');
+    } catch (err) {
+      operationFailed(err, ticket, 'remove-pattern', 'Gagal menghapus pola kunci aplikasi.');
+    } finally {
+      finishSubmission();
+    }
+  };
+  const executeDisableLock = async (confirmationTicket: number) => {
+    if (!canManage('disable') || confirmationTicket !== actionGenerationRef.current) return;
+    const currCandidate = currentPinRef.current;
+    if (!PIN_PATTERN.test(currCandidate)) return;
+    const ticket = startSubmission();
+    clearPinFields();
+    try {
+      await disableAppLock(currCandidate);
+      operationSucceeded(ticket, 'disable', 'Kunci aplikasi dinonaktifkan', 'Kunci aplikasi pada perangkat ini telah dimatikan.');
+    } catch (err) {
+      operationFailed(err, ticket, 'disable', 'Gagal menonaktifkan kunci aplikasi.');
+    } finally {
+      finishSubmission();
+    }
+  };
+  const handleRemovePatternPrompt = () => {
+    if (!canManage('remove-pattern') || !getAppLockState().patternEnabled) return;
+    if (!PIN_PATTERN.test(currentPinRef.current)) {
       setError('Masukkan PIN saat ini (6 digit) untuk menghapus pola kunci.');
       return;
     }
-
-    Alert.alert(
-      'Hapus pola kunci?',
-      'Pola kunci pada perangkat ini akan dihapus. PIN 6 digit tetap digunakan untuk membuka aplikasi.',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Hapus pola',
-          style: 'destructive',
-          onPress: () => {
-            void executeRemovePattern(currCandidate);
-          },
-        },
-      ]
-    );
+    const ticket = ++actionGenerationRef.current;
+    const cancel = () => {
+      if (isCurrentAction(ticket, 'remove-pattern')) returnToOverview();
+    };
+    // The dialog owns only an action ticket. Read the live PIN after confirmation.
+    Alert.alert('Hapus pola kunci?', 'Pola kunci pada perangkat ini akan dihapus. PIN 6 digit tetap digunakan untuk membuka aplikasi.', [
+      { text: 'Batal', style: 'cancel', onPress: cancel },
+      { text: 'Hapus pola', style: 'destructive', onPress: () => executeRemovePattern(ticket) },
+    ], { onDismiss: cancel });
   };
-
-  const executeDisableLock = async (verifiedCurrentPin: string) => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
-    submitLockRef.current = true;
-    setSubmitting(true);
-    setError(null);
-    try {
-      await disableAppLock(verifiedCurrentPin);
-      if (mountedRef.current) {
-        clearAllPinFields();
-        Alert.alert(
-          'Kunci aplikasi dinonaktifkan',
-          'Kunci aplikasi pada perangkat ini telah dimatikan.'
-        );
-      }
-    } catch (err) {
-      if (mountedRef.current) {
-        clearAllPinFields();
-        setNowMs(Date.now());
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : 'Gagal menonaktifkan kunci aplikasi.'
-        );
-      }
-    } finally {
-      if (mountedRef.current) {
-        setSubmitting(false);
-      }
-      submitLockRef.current = false;
-    }
-  };
-
   const handleDisableLockPrompt = () => {
-    if (submitLockRef.current || isBusy || inCooldown) {
-      return;
-    }
-    const currCandidate = currentPinRef.current;
-    if (!PIN_PATTERN.test(currCandidate)) {
+    if (!canManage('disable')) return;
+    if (!PIN_PATTERN.test(currentPinRef.current)) {
       setError('Masukkan PIN saat ini (6 digit) untuk menonaktifkan kunci aplikasi.');
       return;
     }
-
-    Alert.alert(
-      'Nonaktifkan kunci aplikasi?',
-      'PIN, pola kunci, dan pengaturan sidik jari / biometrik di perangkat ini akan dihapus.',
-      [
-        { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Nonaktifkan',
-          style: 'destructive',
-          onPress: () => {
-            void executeDisableLock(currCandidate);
-          },
-        },
-      ]
-    );
+    const ticket = ++actionGenerationRef.current;
+    const cancel = () => {
+      if (isCurrentAction(ticket, 'disable')) returnToOverview();
+    };
+    Alert.alert('Nonaktifkan kunci aplikasi?', 'PIN, pola kunci, dan pengaturan sidik jari / biometrik di perangkat ini akan dihapus.', [
+      { text: 'Batal', style: 'cancel', onPress: cancel },
+      { text: 'Nonaktifkan', style: 'destructive', onPress: () => executeDisableLock(ticket) },
+    ], { onDismiss: cancel });
   };
 
-  const activeError = error || lockState.error;
+  const activeError = error || (lockState.storageError ? lockState.error : null);
+  const notice = inCooldown
+    ? `Terlalu banyak percobaan salah. Coba lagi dalam ${cooldownSeconds} detik.`
+    : activeError;
+  const errorNotice = notice ? (
+    <View style={styles.errorNotice} accessibilityLiveRegion="polite">
+      <Ionicons name={inCooldown ? 'time-outline' : 'alert-circle-outline'} size={18} color={Colors.danger} accessible={false} />
+      <Text style={styles.errorText}>{notice}</Text>
+    </View>
+  ) : null;
+  const fieldsDisabled = isBusy || inCooldown;
+  const biometricUsable = biometricAvailable || lockState.biometricsEnabled;
+  const biometricHint = checkingBiometrics
+    ? 'Memeriksa dukungan sidik jari / biometrik perangkat...'
+    : lockState.biometricsEnabled
+    ? biometricAvailable ? 'Enabled. PIN remains available.' : 'Enabled, but currently unavailable on this device. PIN remains available.'
+    : biometricAvailable
+    ? 'Off. Use device biometrics alongside your PIN.'
+    : 'Not available. Enroll biometrics in device settings.';
+  const viewTitle = view === 'enable' ? 'Aktifkan PIN 6 digit'
+    : view === 'change-pin' ? 'Ganti PIN'
+    : view === 'biometrics' ? 'Sidik jari / biometrik'
+    : view === 'pattern' ? 'Pola kunci (3x3)'
+    : view === 'remove-pattern' ? 'Hapus pola kunci'
+    : view === 'disable' ? 'Matikan kunci aplikasi'
+    : 'Kunci aplikasi';
 
   return (
-    <Screen bottomInset keyboardBehavior="padding">
+    <Screen bottomInset keyboardBehavior="padding" contentStyle={styles.screenContent}>
       <View style={styles.header}>
         <Pressable
           onPress={handleBack}
-          hitSlop={8}
-          style={styles.back}
+          disabled={isBusy}
+          style={({ pressed }) => [styles.back, pressed && styles.pressed, pressed && !reducedMotion && styles.pressedScale]}
           accessibilityRole="button"
           accessibilityLabel="Kembali"
+          accessibilityState={{ disabled: isBusy }}
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={isBusy ? Colors.inkMuted : Colors.ink} accessible={false} />
         </Pressable>
-        <Text style={styles.title}>Kunci aplikasi</Text>
+        <Text style={styles.title} accessibilityRole="header">{viewTitle}</Text>
       </View>
 
       {!lockState.ready ? (
-        <View style={styles.loadingBlock}>
-          <ActivityIndicator
-            size="small"
-            color={Colors.inkMuted}
-            accessibilityLabel="Memuat pengaturan kunci aplikasi"
-          />
-          <Text style={styles.loadingText}>Memuat status keamanan perangkat...</Text>
+        <View style={styles.loadingBlock} accessibilityState={{ busy: true }}>
+          <ActivityIndicator size="small" color={Colors.inkMuted} accessibilityLabel="Memuat pengaturan kunci aplikasi" />
+          <Text style={styles.body}>Memuat status keamanan perangkat...</Text>
         </View>
       ) : !lockState.supported ? (
-        <View style={styles.noticeBlock}>
-          <View style={styles.noticeHeader}>
-            <Ionicons name="shield-outline" size={18} color={Colors.inkSoft} />
-            <Text style={styles.noticeTitle}>Tidak didukung di perangkat ini</Text>
-          </View>
-          <Text style={styles.noticeBody}>
+        <View style={styles.focusContent}>
+          <Text style={styles.focusTitle}>Tidak didukung di perangkat ini</Text>
+          <Text style={styles.body}>
             Kunci aplikasi memerlukan penyimpanan aman perangkat (SecureStore) dan kriptografi
             bawaan sistem yang hanya tersedia pada aplikasi mobile Android atau iOS, bukan versi
             web atau biner lama tanpa modul keamanan.
           </Text>
-          <Button
-            title="Kembali ke pengaturan"
-            variant="secondary"
-            onPress={handleBack}
-            style={styles.noticeButton}
-          />
+          <LockButton reducedMotion={reducedMotion} title="Kembali ke pengaturan" secondary onPress={handleBack} disabled={isBusy} />
         </View>
-      ) : (
-        <View style={styles.content}>
-          <Text style={styles.intro}>
-            Lindungi akses catatan keuangan di perangkat ini dengan PIN 6 digit setiap kali
-            aplikasi dibuka atau kembali dari latar belakang.
-          </Text>
-
-          {inCooldown ? (
-            <View style={styles.cooldownBanner} accessibilityLiveRegion="polite">
-              <Ionicons name="time-outline" size={18} color={Colors.danger} />
-              <Text style={styles.cooldownText}>
-                Terlalu banyak percobaan salah. Coba lagi dalam {cooldownSeconds} detik.
-              </Text>
+      ) : lockState.storageError ? (
+        <View style={styles.focusContent}>
+          <Text style={styles.focusTitle}>Security settings unavailable</Text>
+          {errorNotice}
+          <Text style={styles.body}>Restore access to secure device storage before changing app lock.</Text>
+          <LockButton reducedMotion={reducedMotion} title="Coba lagi" secondary onPress={handleRetryHydrate} busy={isBusy} />
+        </View>
+      ) : lockState.locked || lockState.covered ? (
+        <View style={styles.focusContent}>
+          <Text style={styles.focusTitle}>Unlock the app first</Text>
+          <Text style={styles.body}>App lock settings are unavailable while this device is locked or the app is covered.</Text>
+          {errorNotice}
+        </View>
+      ) : view === 'overview' ? (
+        <>
+          <View style={styles.summary}>
+            <View style={styles.summaryHeader}>
+              <View style={[styles.statusIcon, lockState.enabled && styles.enabledIcon]} accessible={false} importantForAccessibility="no-hide-descendants">
+                <Ionicons name={lockState.enabled ? 'shield-checkmark-outline' : 'lock-open-outline'} size={22} color={lockState.enabled ? Colors.income : Colors.inkSoft} />
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={styles.summaryTitle}>{lockState.enabled ? 'Aktif' : 'Nonaktif'}</Text>
+                <Text style={styles.summaryText}>{lockState.enabled ? 'Your PIN protects access on this device.' : 'Set a six-digit PIN to protect access on this device.'}</Text>
+              </View>
             </View>
-          ) : null}
-
-          {activeError ? (
-            <View style={styles.errorBanner} accessibilityLiveRegion="polite">
-              <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
-              <Text style={styles.errorText}>{activeError}</Text>
-              {!lockState.enabled && lockState.error ? (
-                <Button
-                  title="Coba lagi"
-                  variant="secondary"
-                  fullWidth={false}
-                  onPress={handleRetryHydrate}
-                  loading={submitting}
-                  disabled={isBusy}
-                />
-              ) : null}
-            </View>
-          ) : null}
-
+            {lockState.enabled ? <Text style={styles.fallbackNote}>PIN is always available as your fallback.</Text> : null}
+          </View>
+          {errorNotice}
           {!lockState.enabled ? (
-            <View style={styles.sectionBlock}>
-              <Text style={styles.sectionHeading}>Aktifkan PIN 6 digit</Text>
-              <Text style={styles.sectionSub}>
-                Buat PIN 6 digit angka. Jika kamu lupa PIN di kemudian hari, kamu perlu keluar dan
-                masuk kembali ke akunmu.
-              </Text>
-
-              <Input
-                label="PIN baru (6 digit)"
-                placeholder="••••••"
-                value={newPin}
-                onChangeText={(text) => {
-                  if (error) setError(null);
-                  const clean = sanitizePinInput(text);
-                  newPinRef.current = clean;
-                  setNewPin(clean);
-                }}
-                keyboardType="number-pad"
-                inputMode="numeric"
-                maxLength={6}
-                secureTextEntry
-                autoCorrect={false}
-                autoCapitalize="none"
-                autoComplete="off"
-                textContentType="none"
-                contextMenuHidden
-                editable={!isBusy && !inCooldown}
-                returnKeyType="next"
-                accessibilityLabel="PIN baru 6 digit"
-                fieldStyle={styles.pinField}
-              />
-
-              <Input
-                label="Konfirmasi PIN baru"
-                placeholder="••••••"
-                value={confirmPin}
-                onChangeText={(text) => {
-                  if (error) setError(null);
-                  const clean = sanitizePinInput(text);
-                  confirmPinRef.current = clean;
-                  setConfirmPin(clean);
-                }}
-                keyboardType="number-pad"
-                inputMode="numeric"
-                maxLength={6}
-                secureTextEntry
-                autoCorrect={false}
-                autoCapitalize="none"
-                autoComplete="off"
-                textContentType="none"
-                contextMenuHidden
-                editable={!isBusy && !inCooldown}
-                returnKeyType="done"
-                onSubmitEditing={handleEnableLock}
-                accessibilityLabel="Konfirmasi PIN baru"
-                fieldStyle={styles.pinField}
-              />
-
-              <Button
-                title="Aktifkan kunci aplikasi"
-                onPress={handleEnableLock}
-                loading={isBusy}
-                disabled={isBusy || inCooldown}
-                size="lg"
-              />
+            <View style={styles.focusContent}>
+              <Text style={styles.body}>Buat PIN 6 digit angka. Jika kamu lupa PIN di kemudian hari, kamu perlu keluar dan masuk kembali ke akunmu.</Text>
+              <LockButton reducedMotion={reducedMotion} title="Aktifkan PIN 6 digit" onPress={() => openView('enable')} disabled={fieldsDisabled} />
             </View>
           ) : (
             <>
-              <View style={styles.sectionBlock}>
-                <View style={styles.statusRow}>
-                  <View style={styles.statusBody}>
-                    <Text style={styles.sectionHeading}>Status kunci aplikasi</Text>
-                    <Text style={styles.sectionSub}>
-                      Aktif di perangkat ini. Masukkan PIN saat ini untuk mengubah pengaturan
-                      pola, biometrik, mengganti PIN, atau menonaktifkan kunci.
-                    </Text>
-                  </View>
-                  <View style={styles.activeBadge}>
-                    <Text style={styles.activeBadgeText}>Aktif</Text>
-                  </View>
-                </View>
-
-                <Input
-                  label="PIN saat ini"
-                  placeholder="••••••"
-                  value={currentPin}
-                  onChangeText={(text) => {
-                    if (error) setError(null);
-                    const clean = sanitizePinInput(text);
-                    currentPinRef.current = clean;
-                    setCurrentPin(clean);
-                  }}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  maxLength={6}
-                  secureTextEntry
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  autoComplete="off"
-                  textContentType="none"
-                  contextMenuHidden
-                  editable={!isBusy && !inCooldown}
-                  returnKeyType="done"
-                  accessibilityLabel="PIN saat ini"
-                  hint="Diperlukan untuk memverifikasi perubahan di bawah ini."
-                  fieldStyle={styles.pinField}
-                />
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel} accessibilityRole="header">Unlock methods</Text>
+                <ActionRow reducedMotion={reducedMotion} icon="key-outline" title="Ganti PIN" hint="6-digit PIN. Active and required as your fallback." onPress={() => openView('change-pin')} disabled={fieldsDisabled} />
+                <ActionRow reducedMotion={reducedMotion} icon="grid-outline" title={lockState.patternEnabled ? 'Ubah pola kunci' : 'Atur pola kunci'} hint={lockState.patternEnabled ? 'Active. Optional drag pattern alongside your PIN.' : 'Off. Add an optional 4-9 dot drag pattern.'} onPress={() => openView('pattern')} disabled={fieldsDisabled} />
+                <ActionRow reducedMotion={reducedMotion} icon="finger-print-outline" title="Sidik jari / biometrik" hint={biometricHint} onPress={() => openView('biometrics')} disabled={fieldsDisabled || checkingBiometrics || !biometricUsable} busy={checkingBiometrics} last />
               </View>
-
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionHeading}>Pola kunci (3x3)</Text>
-                <Text style={styles.sectionSub}>
-                  Tambahkan pola minimal 4 titik sebagai pendamping PIN 6 digit. Pola bersifat
-                  opsional; PIN 6 digit tetap tersedia jika kamu tidak ingin menggunakan gestur
-                  tarik.
-                </Text>
-
-                <View style={styles.biometricStatusRow}>
-                  <Text style={styles.rowLabel}>Status pola kunci</Text>
-                  <Text style={styles.rowValue}>
-                    {lockState.patternEnabled ? 'Aktif' : 'Nonaktif'}
-                  </Text>
-                </View>
-
-                {patternStep === 'summary' ? (
-                  <View style={styles.wizardActionStack}>
-                    {activeError ? (
-                      <View style={styles.errorBanner} accessibilityLiveRegion="polite">
-                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
-                        <Text style={styles.errorText}>{activeError}</Text>
-                      </View>
-                    ) : null}
-                    <Button
-                      title={lockState.patternEnabled ? 'Ubah pola kunci' : 'Atur pola kunci'}
-                      variant="secondary"
-                      icon="grid-outline"
-                      onPress={handleStartPatternSetup}
-                      disabled={isBusy || inCooldown}
-                    />
-                    {lockState.patternEnabled ? (
-                      <Button
-                        title="Hapus pola kunci"
-                        variant="ghost"
-                        onPress={handleRemovePatternPrompt}
-                        loading={isBusy}
-                        disabled={isBusy || inCooldown}
-                      />
-                    ) : null}
-                  </View>
-                ) : patternStep === 'draw' ? (
-                  <View style={styles.wizardStepBlock}>
-                    <Text style={styles.wizardStepIndicator}>Langkah 1 dari 2</Text>
-                    <PatternInput
-                      label={
-                        lockState.patternEnabled
-                          ? 'Gambar pola baru (4-9 titik)'
-                          : 'Buat pola baru (4-9 titik)'
-                      }
-                      hint="Sentuh salah satu titik lalu tarik garis tanpa melepas jari."
-                      value={newPattern}
-                      onChange={(next) => {
-                        if (error) setError(null);
-                        newPatternRef.current = next;
-                        setNewPattern(next);
-                      }}
-                      disabled={isBusy || inCooldown}
-                      accessibilityLabel="Pola baru 3x3"
-                    />
-                    {activeError ? (
-                      <View style={styles.errorBanner} accessibilityLiveRegion="polite">
-                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
-                        <Text style={styles.errorText}>{activeError}</Text>
-                      </View>
-                    ) : null}
-                    <View style={styles.wizardActionStack}>
-                      <Button
-                        title="Lanjut ke konfirmasi pola"
-                        onPress={handleAdvancePatternToRepeat}
-                        disabled={isBusy || inCooldown || !isValidLockPattern(newPattern)}
-                      />
-                      <Button
-                        title="Batal"
-                        variant="ghost"
-                        onPress={handleCancelPatternSetup}
-                        disabled={isBusy || inCooldown}
-                      />
-                    </View>
-                  </View>
-                ) : (
-                  <View style={styles.wizardStepBlock}>
-                    <Text style={styles.wizardStepIndicator}>Langkah 2 dari 2</Text>
-                    <View style={styles.draftSummaryRow}>
-                      <Ionicons name="checkmark-circle-outline" size={16} color={Colors.inkSoft} />
-                      <Text style={styles.draftSummaryText}>
-                        Pola pertama siap dikonfirmasi. Ulangi pola yang sama lalu masukkan PIN saat
-                        ini di bawah untuk menyimpan.
-                      </Text>
-                    </View>
-                    <PatternInput
-                      label="Ulangi pola baru untuk konfirmasi"
-                      hint="Tarik pola yang sama persis seperti langkah sebelumnya."
-                      value={confirmPattern}
-                      onChange={(next) => {
-                        if (error) setError(null);
-                        confirmPatternRef.current = next;
-                        setConfirmPattern(next);
-                      }}
-                      disabled={isBusy || inCooldown}
-                      accessibilityLabel="Konfirmasi pola baru 3x3"
-                    />
-                    <Input
-                      label="PIN saat ini untuk menyimpan pola"
-                      placeholder="••••••"
-                      value={currentPin}
-                      onChangeText={(text) => {
-                        if (error) setError(null);
-                        const clean = sanitizePinInput(text);
-                        currentPinRef.current = clean;
-                        setCurrentPin(clean);
-                      }}
-                      keyboardType="number-pad"
-                      inputMode="numeric"
-                      maxLength={6}
-                      secureTextEntry
-                      autoCorrect={false}
-                      autoCapitalize="none"
-                      autoComplete="off"
-                      textContentType="none"
-                      contextMenuHidden
-                      editable={!isBusy && !inCooldown}
-                      returnKeyType="done"
-                      onSubmitEditing={handleSavePattern}
-                      accessibilityLabel="PIN saat ini untuk menyimpan pola"
-                      hint="Verifikasi PIN 6 digit diperlukan sebelum pola disimpan."
-                      fieldStyle={styles.pinField}
-                    />
-                    {activeError ? (
-                      <View style={styles.errorBanner} accessibilityLiveRegion="polite">
-                        <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
-                        <Text style={styles.errorText}>{activeError}</Text>
-                      </View>
-                    ) : null}
-                    <View style={styles.wizardActionStack}>
-                      <Button
-                        title={lockState.patternEnabled ? 'Simpan pola baru' : 'Aktifkan pola kunci'}
-                        icon="grid-outline"
-                        onPress={handleSavePattern}
-                        loading={isBusy}
-                        disabled={isBusy || inCooldown || !isValidLockPattern(confirmPattern)}
-                      />
-                      <Button
-                        title="Gambar ulang pola pertama"
-                        variant="secondary"
-                        onPress={handleBackToDrawPattern}
-                        disabled={isBusy || inCooldown}
-                      />
-                      <Button
-                        title="Batal"
-                        variant="ghost"
-                        onPress={handleCancelPatternSetup}
-                        disabled={isBusy || inCooldown}
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionHeading}>Sidik jari / biometrik</Text>
-                <Text style={styles.sectionSub}>
-                  {checkingBiometrics
-                    ? 'Memeriksa dukungan sidik jari / biometrik perangkat...'
-                    : biometricAvailable || lockState.biometricsEnabled
-                    ? 'Gunakan sidik jari / biometrik kuat bawaan sistem operasi (termasuk pengenalan wajah yang didukung perangkat) sebagai pendamping PIN.'
-                    : 'Sidik jari / biometrik belum tersedia atau belum didaftarkan di pengaturan keamanan perangkat ini. PIN 6 digit tetap digunakan.'}
-                </Text>
-
-                <View style={styles.biometricStatusRow}>
-                  <Text style={styles.rowLabel}>Status biometrik</Text>
-                  <Text style={styles.rowValue}>
-                    {lockState.biometricsEnabled ? 'Aktif' : 'Nonaktif'}
-                  </Text>
-                </View>
-
-                {biometricAvailable || lockState.biometricsEnabled ? (
-                  <Button
-                    title={
-                      lockState.biometricsEnabled
-                        ? 'Nonaktifkan sidik jari / biometrik'
-                        : 'Aktifkan sidik jari / biometrik'
-                    }
-                    variant="secondary"
-                    icon="finger-print-outline"
-                    onPress={handleToggleBiometrics}
-                    loading={isBusy}
-                    disabled={isBusy || inCooldown}
-                  />
-                ) : null}
-              </View>
-
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionHeading}>Ganti PIN</Text>
-                <Text style={styles.sectionSub}>
-                  Isi PIN saat ini di bagian atas, lalu masukkan PIN 6 digit baru dan
-                  konfirmasinya.
-                </Text>
-
-                <Input
-                  label="PIN baru (6 digit)"
-                  placeholder="••••••"
-                  value={changeNextPin}
-                  onChangeText={(text) => {
-                    if (error) setError(null);
-                    const clean = sanitizePinInput(text);
-                    changeNextPinRef.current = clean;
-                    setChangeNextPin(clean);
-                  }}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  maxLength={6}
-                  secureTextEntry
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  autoComplete="off"
-                  textContentType="none"
-                  contextMenuHidden
-                  editable={!isBusy && !inCooldown}
-                  returnKeyType="next"
-                  accessibilityLabel="PIN baru 6 digit"
-                  fieldStyle={styles.pinField}
-                />
-
-                <Input
-                  label="Konfirmasi PIN baru"
-                  placeholder="••••••"
-                  value={changeConfirmPin}
-                  onChangeText={(text) => {
-                    if (error) setError(null);
-                    const clean = sanitizePinInput(text);
-                    changeConfirmPinRef.current = clean;
-                    setChangeConfirmPin(clean);
-                  }}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  maxLength={6}
-                  secureTextEntry
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  autoComplete="off"
-                  textContentType="none"
-                  contextMenuHidden
-                  editable={!isBusy && !inCooldown}
-                  returnKeyType="done"
-                  onSubmitEditing={handleChangePin}
-                  accessibilityLabel="Konfirmasi PIN baru"
-                  fieldStyle={styles.pinField}
-                />
-
-                <Button
-                  title="Simpan PIN baru"
-                  onPress={handleChangePin}
-                  loading={isBusy}
-                  disabled={isBusy || inCooldown}
-                />
-              </View>
-
-              <View style={styles.sectionBlock}>
-                <Text style={styles.sectionHeading}>Matikan kunci aplikasi</Text>
-                <Text style={styles.sectionSub}>
-                  Menonaktifkan kunci aplikasi memerlukan verifikasi PIN saat ini.
-                </Text>
-                <Button
-                  title="Nonaktifkan kunci aplikasi"
-                  variant="danger"
-                  icon="lock-open-outline"
-                  onPress={handleDisableLockPrompt}
-                  loading={isBusy}
-                  disabled={isBusy || inCooldown}
-                />
+              <View style={styles.dangerArea}>
+                <Text style={styles.sectionLabel} accessibilityRole="header">Remove protection</Text>
+                {lockState.patternEnabled ? <ActionRow reducedMotion={reducedMotion} icon="trash-outline" title="Hapus pola kunci" hint="Remove only the pattern. Your PIN stays active." onPress={() => openView('remove-pattern')} disabled={fieldsDisabled} danger /> : null}
+                <ActionRow reducedMotion={reducedMotion} icon="lock-open-outline" title="Nonaktifkan kunci aplikasi" hint="Remove PIN, pattern, and biometrics from this device." onPress={() => openView('disable')} disabled={fieldsDisabled} danger last />
               </View>
             </>
           )}
+        </>
+      ) : (
+        <View style={styles.focusContent}>
+          {view === 'enable' || view === 'change-pin' ? (
+            <>
+              <Text style={styles.body}>{view === 'enable' ? 'Create and confirm a six-digit PIN for this device.' : 'Verify your current PIN, then choose and confirm a new six-digit PIN.'}</Text>
+              {view === 'change-pin' ? <PinField label="PIN saat ini" value={currentPin} onChange={(text) => updatePin(text, 'current')} disabled={fieldsDisabled} /> : null}
+              <PinField label="PIN baru (6 digit)" accessibilityLabel="PIN baru 6 digit" value={newPin} onChange={(text) => updatePin(text, 'new')} disabled={fieldsDisabled} />
+              <PinField label="Konfirmasi PIN baru" value={confirmPin} onChange={(text) => updatePin(text, 'confirm')} onSubmit={view === 'enable' ? handleEnableLock : handleChangePin} disabled={fieldsDisabled} />
+              {errorNotice}
+              <LockButton reducedMotion={reducedMotion} title={view === 'enable' ? 'Aktifkan kunci aplikasi' : 'Simpan PIN baru'} onPress={view === 'enable' ? handleEnableLock : handleChangePin} busy={isBusy} disabled={inCooldown} />
+            </>
+          ) : view === 'biometrics' ? (
+            <>
+              <Text style={styles.body}>{lockState.biometricsEnabled ? 'Turn off biometric unlock on this device. Your PIN stays active.' : 'Verify your PIN, then confirm with your device biometrics. Your PIN stays active.'}</Text>
+              <View style={styles.methodNote}><Text style={styles.body}>{biometricHint}</Text></View>
+              <PinField label="PIN saat ini" value={currentPin} onChange={(text) => updatePin(text, 'current')} onSubmit={handleToggleBiometrics} disabled={fieldsDisabled || checkingBiometrics || !biometricUsable} />
+              {errorNotice}
+              <LockButton reducedMotion={reducedMotion} title={lockState.biometricsEnabled ? 'Disable biometrics' : 'Enable biometrics'} onPress={handleToggleBiometrics} busy={isBusy} disabled={inCooldown || checkingBiometrics || !biometricUsable} />
+            </>
+          ) : view === 'pattern' ? (
+            <>
+              <Text style={styles.body}>Add a drag pattern alongside your PIN. Your six-digit PIN remains available.</Text>
+              <Text style={styles.stepIndicator}>{patternStep === 'repeat' ? 'Langkah 2 dari 2' : 'Langkah 1 dari 2'}</Text>
+              {patternStep !== 'repeat' ? (
+                <>
+                  <PatternInput
+                    label={lockState.patternEnabled ? 'Gambar pola baru (4-9 titik)' : 'Buat pola baru (4-9 titik)'}
+                    hint="Sentuh salah satu titik lalu tarik garis tanpa melepas jari."
+                    value={newPattern}
+                    onChange={(next) => {
+                      if (!canManage('pattern') || patternStepRef.current !== 'draw') return;
+                      setError(null);
+                      newPatternRef.current = [...next];
+                      setNewPattern([...next]);
+                    }}
+                    disabled={fieldsDisabled}
+                    accessibilityLabel="Pola baru 3x3"
+                  />
+                  {errorNotice}
+                  <LockButton reducedMotion={reducedMotion} title="Lanjut ke konfirmasi pola" onPress={handleAdvancePatternToRepeat} disabled={fieldsDisabled || !isValidLockPattern(newPattern)} />
+                </>
+              ) : (
+                <>
+                  <View style={styles.methodNote}><Text style={styles.body}>Pola pertama siap dikonfirmasi. Ulangi pola yang sama lalu masukkan PIN saat ini di bawah untuk menyimpan.</Text></View>
+                  <PatternInput
+                    label="Ulangi pola baru untuk konfirmasi"
+                    hint="Tarik pola yang sama persis seperti langkah sebelumnya."
+                    value={confirmPattern}
+                    onChange={(next) => {
+                      if (!canManage('pattern') || patternStepRef.current !== 'repeat') return;
+                      setError(null);
+                      confirmPatternRef.current = [...next];
+                      setConfirmPattern([...next]);
+                    }}
+                    disabled={fieldsDisabled}
+                    accessibilityLabel="Konfirmasi pola baru 3x3"
+                  />
+                  <PinField label="PIN saat ini untuk menyimpan pola" value={currentPin} onChange={(text) => updatePin(text, 'current')} onSubmit={handleSavePattern} disabled={fieldsDisabled} />
+                  {errorNotice}
+                  <LockButton reducedMotion={reducedMotion} title={lockState.patternEnabled ? 'Simpan pola baru' : 'Aktifkan pola kunci'} onPress={handleSavePattern} busy={isBusy} disabled={inCooldown || !isValidLockPattern(confirmPattern)} />
+                  <LockButton reducedMotion={reducedMotion} title="Gambar ulang pola pertama" secondary onPress={handleBackToDrawPattern} disabled={fieldsDisabled} />
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <View style={styles.warningNote}>
+                <Ionicons name="warning-outline" size={20} color={Colors.danger} accessible={false} />
+                <Text style={styles.warningText}>{view === 'remove-pattern' ? 'This removes only the pattern from this device. Your six-digit PIN stays active.' : 'This removes the PIN, pattern, and biometric settings from this device. Your financial records are not deleted.'}</Text>
+              </View>
+              <PinField label="PIN saat ini" value={currentPin} onChange={(text) => updatePin(text, 'current')} onSubmit={view === 'remove-pattern' ? handleRemovePatternPrompt : handleDisableLockPrompt} disabled={fieldsDisabled} />
+              {errorNotice}
+              <LockButton reducedMotion={reducedMotion} title={view === 'remove-pattern' ? 'Hapus pola kunci' : 'Nonaktifkan kunci aplikasi'} danger onPress={view === 'remove-pattern' ? handleRemovePatternPrompt : handleDisableLockPrompt} busy={isBusy} disabled={inCooldown} />
+            </>
+          )}
+          <LockButton reducedMotion={reducedMotion} title="Batal" secondary onPress={handleCancel} disabled={isBusy} />
         </View>
       )}
     </Screen>
   );
 }
 
+function PinField({ label, accessibilityLabel = label, value, onChange, onSubmit, disabled }: {
+  label: string;
+  accessibilityLabel?: string;
+  value: string;
+  onChange: (text: string) => void;
+  onSubmit?: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <Input
+      label={label}
+      placeholder="••••••"
+      value={value}
+      onChangeText={onChange}
+      keyboardType="number-pad"
+      inputMode="numeric"
+      maxLength={6}
+      secureTextEntry
+      autoCorrect={false}
+      autoCapitalize="none"
+      autoComplete="off"
+      textContentType="none"
+      contextMenuHidden
+      editable={!disabled}
+      returnKeyType={onSubmit ? 'done' : 'next'}
+      onSubmitEditing={onSubmit}
+      accessibilityLabel={accessibilityLabel}
+      fieldStyle={styles.pinField}
+    />
+  );
+}
+
+function LockButton({ title, onPress, reducedMotion, busy = false, disabled = false, secondary = false, danger = false }: {
+  title: string;
+  onPress: () => void;
+  reducedMotion: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  secondary?: boolean;
+  danger?: boolean;
+}) {
+  const inactive = disabled || busy;
+  return (
+    <Pressable
+      onPress={() => { if (!inactive) return onPress(); }}
+      disabled={inactive}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: inactive, busy }}
+      style={({ pressed }) => [styles.button, secondary && styles.secondaryButton, danger && styles.dangerButton, inactive && styles.inactiveButton, pressed && styles.pressed, pressed && !reducedMotion && styles.pressedScale]}
+    >
+      {busy ? <ActivityIndicator size="small" color={secondary ? Colors.inkMuted : danger ? Colors.danger : Colors.onInk} accessible={false} /> : null}
+      <Text style={[styles.buttonText, secondary && styles.secondaryButtonText, danger && styles.dangerButtonText]}>{title}</Text>
+    </Pressable>
+  );
+}
+
+function ActionRow({ icon, title, hint, onPress, disabled, reducedMotion, busy = false, danger = false, last = false }: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  hint: string;
+  onPress: () => void;
+  disabled: boolean;
+  reducedMotion: boolean;
+  busy?: boolean;
+  danger?: boolean;
+  last?: boolean;
+}) {
+  const inactive = disabled || busy;
+  const color = danger ? Colors.danger : Colors.inkSoft;
+  return (
+    <Pressable
+      onPress={() => { if (!inactive) onPress(); }}
+      disabled={inactive}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled: inactive, busy }}
+      style={({ pressed }) => [styles.actionRow, last && styles.lastRow, pressed && styles.pressed, pressed && !reducedMotion && styles.pressedScale]}
+    >
+      <View style={styles.rowIcon} accessible={false} importantForAccessibility="no-hide-descendants"><Ionicons name={icon} size={20} color={color} /></View>
+      <View style={styles.rowBody}>
+        <Text style={[styles.rowTitle, danger && styles.dangerButtonText, inactive && styles.disabledText]}>{title}</Text>
+        <Text style={styles.rowHint}>{hint}</Text>
+      </View>
+      <View style={styles.rowAccessory} accessible={false} importantForAccessibility="no-hide-descendants">
+        {busy ? <ActivityIndicator size="small" color={color} /> : <Ionicons name="chevron-forward" size={18} color={color} />}
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  screenContent: {
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    marginBottom: Space.md,
+    marginBottom: Space.lg,
   },
   back: {
-    width: 44,
-    height: 44,
-    alignItems: 'flex-start',
+    width: 48,
+    minHeight: 48,
+    alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
     marginLeft: -Space.sm,
+    borderRadius: Radius.control,
   },
   title: {
     ...Type.h2,
+    flex: 1,
+    minWidth: 0,
   },
   loadingBlock: {
     paddingVertical: Space.xxl,
+    gap: Space.md,
+    alignItems: 'center',
+  },
+  focusContent: {
+    gap: Space.md,
+  },
+  focusTitle: {
+    ...Type.title,
+  },
+  body: {
+    ...Type.body,
+    color: Colors.inkSoft,
+  },
+  summary: {
+    padding: Space.lg,
+    borderRadius: Radius.block,
+    backgroundColor: Colors.surfaceAlt,
+    marginBottom: Space.xl,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+  },
+  statusIcon: {
+    width: 48,
+    height: 48,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.inkTint,
+    borderRadius: Radius.pill,
+  },
+  enabledIcon: {
+    backgroundColor: Colors.incomeTint,
+  },
+  summaryTitle: {
+    ...Type.h2,
+  },
+  summaryText: {
+    ...Type.caption,
+    color: Colors.inkSoft,
+    marginTop: Space.xs,
+  },
+  fallbackNote: {
+    ...Type.caption,
+    color: Colors.inkSoft,
+    paddingTop: Space.md,
+    marginTop: Space.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.lineStrong,
+  },
+  section: {
+    marginBottom: Space.xl,
+  },
+  sectionLabel: {
+    ...Type.caption,
+    fontFamily: Fonts.semibold,
+    color: Colors.ink,
+    marginBottom: Space.xs,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    minHeight: 64,
+    paddingVertical: Space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.line,
+  },
+  rowIcon: {
+    width: 24,
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  rowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTitle: {
+    ...Type.bodyStrong,
+  },
+  rowHint: {
+    ...Type.caption,
+    marginTop: Space.xs,
+  },
+  rowAccessory: {
+    width: 20,
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  disabledText: {
+    color: Colors.inkMuted,
+  },
+  lastRow: {
+    borderBottomWidth: 0,
+  },
+  dangerArea: {
+    backgroundColor: Colors.dangerTint,
+    padding: Space.lg,
+    borderRadius: Radius.block,
+  },
+  warningNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Space.md,
+    backgroundColor: Colors.dangerTint,
+    padding: Space.lg,
+    borderRadius: Radius.block,
+  },
+  warningText: {
+    ...Type.body,
+    color: Colors.danger,
+    flex: 1,
+    minWidth: 0,
+  },
+  methodNote: {
+    padding: Space.md,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.control,
+  },
+  stepIndicator: {
+    ...Type.caption,
+    fontFamily: Fonts.semibold,
+    color: Colors.ink,
+  },
+  errorNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Space.sm,
+    paddingVertical: Space.md,
+  },
+  errorText: {
+    ...Type.body,
+    color: Colors.danger,
+    flex: 1,
+    minWidth: 0,
+    fontVariant: ['tabular-nums'],
+  },
+  button: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Space.sm,
-  },
-  loadingText: {
-    ...Type.caption,
-    color: Colors.inkMuted,
-  },
-  noticeBlock: {
-    backgroundColor: Colors.surface,
+    minHeight: 48,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.md,
+    backgroundColor: Colors.ink,
     borderWidth: 1,
-    borderColor: Colors.line,
-    borderRadius: Radius.block,
-    padding: Space.lg,
-    gap: Space.md,
-  },
-  noticeHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.sm,
-  },
-  noticeTitle: {
-    ...Type.title,
-  },
-  noticeBody: {
-    ...Type.body,
-    color: Colors.inkSoft,
-  },
-  noticeButton: {
-    marginTop: Space.xs,
-  },
-  content: {
-    gap: Space.lg,
-  },
-  intro: {
-    ...Type.body,
-    color: Colors.inkSoft,
-  },
-  cooldownBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.sm,
-    backgroundColor: Colors.dangerTint,
-    borderWidth: 1,
-    borderColor: 'rgba(163, 43, 43, 0.25)',
+    borderColor: Colors.ink,
     borderRadius: Radius.control,
-    paddingVertical: Space.sm,
-    paddingHorizontal: Space.md,
   },
-  cooldownText: {
-    ...Type.caption,
-    color: Colors.danger,
-    flex: 1,
-    fontVariant: ['tabular-nums'],
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.sm,
-    backgroundColor: Colors.dangerTint,
-    borderWidth: 1,
-    borderColor: 'rgba(163, 43, 43, 0.25)',
-    borderRadius: Radius.control,
-    paddingVertical: Space.sm,
-    paddingHorizontal: Space.md,
-  },
-  errorText: {
-    ...Type.caption,
-    color: Colors.danger,
-    flex: 1,
-  },
-  sectionBlock: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.line,
-    borderRadius: Radius.block,
-    padding: Space.lg,
-    gap: Space.sm,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Space.md,
-    marginBottom: Space.xs,
-  },
-  statusBody: {
-    flex: 1,
-    gap: Space.xs,
-  },
-  activeBadge: {
-    backgroundColor: Colors.incomeTint,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Space.md,
-    paddingVertical: Space.xs,
-  },
-  activeBadgeText: {
-    ...Type.micro,
-    color: Colors.income,
-  },
-  sectionHeading: {
-    ...Type.title,
-  },
-  sectionSub: {
-    ...Type.caption,
-    color: Colors.inkSoft,
-    marginBottom: Space.xs,
-  },
-  biometricStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 44,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: Colors.line,
-    marginBottom: Space.xs,
-  },
-  rowLabel: {
-    ...Type.body,
-    color: Colors.inkSoft,
-  },
-  rowValue: {
+  buttonText: {
     ...Type.bodyStrong,
+    fontFamily: Fonts.semibold,
+    color: Colors.onInk,
+    flexShrink: 1,
+    minWidth: 0,
+    textAlign: 'center',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderColor: Colors.lineStrong,
+  },
+  secondaryButtonText: {
     color: Colors.ink,
   },
-  wizardStepBlock: {
-    gap: Space.sm,
+  dangerButton: {
+    backgroundColor: Colors.dangerTint,
+    borderColor: Colors.danger,
   },
-  wizardStepIndicator: {
-    ...Type.micro,
-    textTransform: 'uppercase',
-    color: Colors.inkMuted,
+  dangerButtonText: {
+    color: Colors.danger,
   },
-  draftSummaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.sm,
-    backgroundColor: Colors.surfaceAlt,
-    borderRadius: Radius.control,
-    paddingVertical: Space.sm,
-    paddingHorizontal: Space.md,
+  inactiveButton: {
+    opacity: 0.55,
   },
-  draftSummaryText: {
-    ...Type.caption,
-    color: Colors.inkSoft,
-    flex: 1,
+  pressed: {
+    opacity: 0.75,
   },
-  wizardActionStack: {
-    gap: Space.sm,
-    marginTop: Space.xs,
+  pressedScale: {
+    transform: [{ scale: 0.98 }],
   },
   pinField: {
     fontFamily: Fonts.semibold,
     fontSize: 20,
-    letterSpacing: 6,
+    letterSpacing: 4,
+    minHeight: 48,
     fontVariant: ['tabular-nums'],
   },
 });

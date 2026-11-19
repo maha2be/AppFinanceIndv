@@ -1,5 +1,5 @@
 /** In-tree confirmations disappear when privacy state changes. */
-import type { AlertButton } from 'react-native';
+import type { AlertButton, AlertOptions } from 'react-native';
 import { getAppLockState, subscribeAppLock } from './appLock';
 import { isAuthenticated, subscribeSession } from './session';
 
@@ -9,6 +9,7 @@ interface Dialog {
   buttons: AlertButton[];
   host: string;
   generation: number;
+  onDismiss?: () => void;
 }
 let dialog: Dialog | null = null;
 let generation = 0;
@@ -43,14 +44,19 @@ export function subscribeAppAlert(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 export const AppAlert = {
-  alert(title: string, message?: string, buttons?: AlertButton[]): void {
+  alert(title: string, message?: string, buttons?: AlertButton[], options?: Pick<AlertOptions, 'onDismiss'>): void {
     if (gated()) return;
     dialog = { title, message, buttons: buttons ?? [{ text: 'OK' }],
-      host: hosts[hosts.length - 1] ?? 'root', generation };
+      host: hosts[hosts.length - 1] ?? 'root', generation, onDismiss: options?.onDismiss };
     notify();
   },
 };
-export function dismissAppAlert(): void { dialog = null; notify(); }
+export function dismissAppAlert(): void {
+  const current = dialog;
+  dialog = null;
+  notify();
+  current?.onDismiss?.();
+}
 export function pressAppAlert(index: number): void {
   const current = dialog;
   dialog = null;

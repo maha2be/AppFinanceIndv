@@ -55,7 +55,9 @@ function createSettingsHarness(overrides = {}, behavior = {}) {
     changeAppLockPin: async (...args) => { calls.changeAppLockPin.push(args); },
     setAppLockBiometrics: async (...args) => { calls.setAppLockBiometrics.push(args); },
     setAppLockPattern: async (...args) => {
-      calls.setAppLockPattern.push(args);
+      // Normalize the copied pattern's VM array prototype, preserving every argument value.
+      calls.setAppLockPattern.push(args.map((arg) => Array.isArray(arg) ? Array.from(arg) : arg));
+      behavior.onPattern?.(lockState);
       if (behavior.failPattern) throw behavior.failPattern;
       if (lockState.patternEnabled === false) lockState.patternEnabled = true;
     },
@@ -74,6 +76,8 @@ function createSettingsHarness(overrides = {}, behavior = {}) {
   const harness = createHarness({
     componentPath: 'app/app-lock.tsx',
     modules: {
+      'react-native': { Keyboard: { dismiss() {} } },
+      '../utils/motion': { useReducedMotion: () => false },
       '../services/appAlert': { AppAlert: alert },
       '../services/appLock': service,
       '../utils/lockPattern': lockPattern,
@@ -214,24 +218,43 @@ test('a wrong current PIN keeps both patterns in one repeat grid and a retry suc
   assert.equal(patternInputs(harness).length, 0, 'success returns to the summary');
 });
 
-test('cooldown or storage failures abandon the wizard and show the summary error', async () => {
-  const behavior = { failPattern: new Error('Terlalu banyak percobaan.') };
-  const { harness, calls, lockState } = createSettingsHarness({}, behavior);
-  await harness.mount();
-  await startSetup(harness);
-  harness.patternChange('Pola baru 3x3', PATTERN);
-  await harness.press('Lanjut ke konfirmasi pola');
-  harness.patternChange('Konfirmasi pola baru 3x3', PATTERN);
-  harness.change('PIN saat ini untuk menyimpan pola', PIN);
-  lockState.retryAt = Date.now() + 30_000;
+test('live cooldown blocks saving, while service cooldown or storage failures abandon the wizard', async (t) => {
+  const now = 1_900_000_000_000;
+  t.mock.method(Date, 'now', () => now);
+  for (const reason of ['pre-submit cooldown', 'service cooldown', 'service storage failure']) {
+    const storageFailure = reason === 'service storage failure';
+    const behavior = {
+      failPattern: new Error(storageFailure ? 'Penyimpanan aman gagal.' : 'Terlalu banyak percobaan.'),
+      onPattern: (state) => {
+        if (storageFailure) {
+          // Match failStorage(): the service publishes its error and locks the device before throwing.
+          Object.assign(state, { storageError: true, locked: true, error: behavior.failPattern.message });
+        }
+        else state.retryAt = now + 30_000;
+      },
+    };
+    const { harness, calls, lockState } = createSettingsHarness({}, behavior);
+    t.after(() => harness.unmount());
+    await harness.mount();
+    await startSetup(harness);
+    harness.patternChange('Pola baru 3x3', PATTERN);
+    await harness.press('Lanjut ke konfirmasi pola');
+    harness.patternChange('Konfirmasi pola baru 3x3', PATTERN);
+    harness.change('PIN saat ini untuk menyimpan pola', PIN);
+    if (reason === 'pre-submit cooldown') lockState.retryAt = now + 30_000;
 
-  await harness.press('Aktifkan pola kunci');
+    await harness.press('Aktifkan pola kunci');
 
-  assert.equal(calls.setAppLockPattern.length, 1);
-  assert.equal(patternInputs(harness).length, 0, 'cooldown returns to the summary');
-  assert.ok(harness.textMatching(/Terlalu banyak percobaan/));
-  assert.ok(harness.byLabel('Atur pola kunci'));
-  harness.unmount();
+    assert.equal(calls.setAppLockPattern.length, reason === 'pre-submit cooldown' ? 0 : 1, reason);
+    if (calls.setAppLockPattern.length) assert.deepEqual(calls.setAppLockPattern, [[PIN, PATTERN]]);
+    assert.equal(patternInputs(harness).length, 0, 'unsafe state abandons the wizard');
+    assert.equal(harness.allByType('Input').length, 0, 'unsafe state clears every PIN field');
+    assert.equal(calls.alerts.length, 0, 'failed or blocked saves must not report success');
+    assert.ok(harness.textMatching(storageFailure ? /Penyimpanan aman gagal/ : /Terlalu banyak percobaan/));
+    if (storageFailure) assert.equal(harness.byLabel('Atur pola kunci'), undefined);
+    else assert.equal(harness.byLabel('Atur pola kunci').props.disabled, true);
+    harness.unmount();
+  }
 });
 
 test('the current PIN remains required after both patterns match', async () => {
@@ -289,7 +312,7 @@ test('backgrounding the app clears wizard drafts and secrets', async () => {
   harness.flush();
 
   assert.equal(patternInputs(harness).length, 0, 'backgrounding abandons the wizard');
-  assert.equal(harness.byLabel('PIN saat ini').props.value, '', 'PIN draft must be cleared');
+  assert.equal(harness.allByType('Input').length, 0, 'the overview must not retain any PIN field');
   assert.equal(calls.setAppLockPattern.length, 0);
   assert.ok(harness.byLabel('Atur pola kunci'), 'summary is restored');
 });
