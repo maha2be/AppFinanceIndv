@@ -8,6 +8,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 TransactionTypeValue = Literal["income", "expense", "investment"]
+TransactionSortValue = Literal["date_desc", "date_asc", "amount_desc", "amount_asc"]
 DebtTypeValue = Literal["debt", "receivable"]
 DebtStatusValue = Literal["active", "settled"]
 
@@ -143,11 +144,20 @@ class TransactionCreate(BaseModel):
 
 
 class TransactionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     amount: Optional[int] = Field(None, gt=0)
     category_id: Optional[int] = None
     transaction_date: Optional[date] = None
     note: Optional[str] = Field(None, max_length=500)
     asset_name: Optional[str] = Field(None, max_length=80)
+
+    @field_validator("amount", "transaction_date")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        if value is None:
+            raise ValueError("Field cannot be null; omit it to keep the current value.")
+        return value
 
 
 class TransactionResponse(BaseModel):
@@ -162,6 +172,45 @@ class TransactionResponse(BaseModel):
     note: Optional[str] = None
     asset_name: Optional[str] = None
     transaction_date: str
+    can_edit: bool
+    can_delete: bool
+
+
+class TransactionPageResponse(BaseModel):
+    """One page of the transaction browser.
+
+    ``page`` is the effective page after clamping, so a client that asked for a
+    page that no longer exists still receives real rows and its real number.
+    """
+
+    items: list[TransactionResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class TransactionSnapshot(BaseModel):
+    id: int
+    type: str
+    category_id: Optional[int]
+    category_name: Optional[str]
+    amount: int
+    note: Optional[str]
+    asset_name: Optional[str]
+    transaction_date: str
+    source_key: Optional[str]
+
+
+class TransactionHistoryResponse(BaseModel):
+    id: int
+    transaction_id: int
+    action: Literal["update", "delete"]
+    source: Literal["api", "telegram", "system"]
+    reason: Literal["direct", "debt_sync", "debt_delete", "payment_delete"]
+    before: TransactionSnapshot
+    after: Optional[TransactionSnapshot]
+    created_at: str
 
 
 class QuickInputRequest(BaseModel):

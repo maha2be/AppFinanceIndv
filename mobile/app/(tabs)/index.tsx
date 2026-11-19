@@ -1,8 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Space, Type } from '../../utils/theme';
+import { Colors, Fonts, Space, Type } from '../../utils/theme';
 import { PeriodReport, Transaction, User, DebtSummary } from '../../types';
 import { ReportSummaryCard } from '../../components/ReportSummaryCard';
 import { QuickInputBar } from '../../components/QuickInputBar';
@@ -28,14 +28,28 @@ export default function DashboardScreen() {
   const [debtSummary, setDebtSummary] = useState<DebtSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const requestSeqRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadData = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     const [profileResult, reportResult, txResult, debtResult] = await Promise.allSettled([
       authApi.getProfile(),
       reportApi.getDailyReport(),
       transactionApi.getTransactions({ limit: 10 }),
       debtApi.getSummary(),
     ]);
+
+    if (!mountedRef.current || seq !== requestSeqRef.current) {
+      return;
+    }
 
     if (profileResult.status === 'fulfilled') setUser(profileResult.value);
     if (reportResult.status === 'fulfilled') setReport(reportResult.value);
@@ -133,14 +147,15 @@ export default function DashboardScreen() {
       <FadeIn delay={240}>
         <SectionHeader
           title="Transaksi terbaru"
-          actionLabel="Lihat semua"
-          onAction={() => router.push('/(tabs)/reports')}
+          actionLabel="Seluruh Transaksi"
+          actionUnderlined
+          onAction={() => router.push('/transactions')}
         />
 
         {transactions.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
-            title="Belum ada transaksi hari ini"
+            title="Belum ada transaksi tercatat"
             message='Ketik "makan 25000" di kolom catat cepat untuk mulai mencatat.'
             actionLabel="Catat manual"
             onAction={() => router.push('/(tabs)/add')}
@@ -148,10 +163,27 @@ export default function DashboardScreen() {
         ) : (
           <View>
             {transactions.map((transaction) => (
-              <TransactionCard key={transaction.id} transaction={transaction} />
+              <TransactionCard
+                key={transaction.id}
+                transaction={transaction}
+                onPress={() => router.push(`/transaction/${transaction.id}`)}
+              />
             ))}
           </View>
         )}
+
+        <Pressable
+          onPress={() => router.push('/transaction-history')}
+          disabled={false}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Riwayat perubahan"
+          style={({ pressed }) => [styles.auditLinkRow, pressed ? styles.pressed : null]}
+        >
+          <Ionicons name="time-outline" size={16} color={Colors.inkSoft} />
+          <Text style={styles.auditLinkText}>Riwayat perubahan</Text>
+          <Ionicons name="chevron-forward" size={15} color={Colors.inkMuted} />
+        </Pressable>
       </FadeIn>
     </Screen>
   );
@@ -195,6 +227,21 @@ const styles = StyleSheet.create({
   recurringHint: {
     ...Type.caption,
     marginTop: 2,
+  },
+  auditLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    minHeight: 44,
+    paddingVertical: Space.sm,
+    marginTop: Space.xs,
+  },
+  auditLinkText: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.inkSoft,
+    flex: 1,
   },
   pressed: {
     opacity: 0.85,

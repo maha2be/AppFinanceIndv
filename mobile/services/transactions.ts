@@ -1,5 +1,13 @@
 import { api } from './api';
-import { QuickInputPreview, Transaction, TransactionType } from '../types';
+import {
+  QuickInputPreview,
+  Transaction,
+  TransactionHistoryEntry,
+  TransactionPage,
+  TransactionPageQuery,
+  TransactionType,
+  TransactionUpdatePayload,
+} from '../types';
 
 export const transactionApi = {
   async getTransactions(params?: {
@@ -13,8 +21,23 @@ export const transactionApi = {
     return res.data;
   },
 
+  /** One filtered page of 20; the backend owns the page size. */
+  async getTransactionPage(params: TransactionPageQuery): Promise<TransactionPage> {
+    const res = await api.get<TransactionPage>('/api/transactions/page', { params });
+    return res.data;
+  },
+
   async getTransaction(id: number): Promise<Transaction> {
     const res = await api.get<Transaction>(`/api/transactions/${id}`);
+    return res.data;
+  },
+
+  async getTransactionHistory(params?: {
+    transaction_id?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<TransactionHistoryEntry[]> {
+    const res = await api.get<TransactionHistoryEntry[]>('/api/transactions/history', { params });
     return res.data;
   },
 
@@ -33,13 +56,7 @@ export const transactionApi = {
 
   async updateTransaction(
     id: number,
-    payload: {
-      amount?: number;
-      category_id?: number;
-      note?: string;
-      asset_name?: string;
-      transaction_date?: string;
-    }
+    payload: TransactionUpdatePayload
   ): Promise<Transaction> {
     const res = await api.put<Transaction>(`/api/transactions/${id}`, payload);
     return res.data;

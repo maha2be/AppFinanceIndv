@@ -16,6 +16,8 @@ import { Colors, Space } from '../../utils/theme';
 interface ScreenProps {
   children: React.ReactNode;
   scroll?: boolean;
+  /** Suspend touch scrolling without unmounting the scroll content. */
+  scrollEnabled?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
   /** Sticky block rendered after the scroll area (FAB, CTA bar). */
@@ -31,6 +33,7 @@ interface ScreenProps {
 export function Screen({
   children,
   scroll = true,
+  scrollEnabled = true,
   refreshing = false,
   onRefresh,
   footer,
@@ -44,6 +47,7 @@ export function Screen({
       contentContainerStyle={[styles.content, contentStyle]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      scrollEnabled={scrollEnabled}
       refreshControl={
         onRefresh ? (
           <RefreshControl

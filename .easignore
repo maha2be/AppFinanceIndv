@@ -1,0 +1,80 @@
+# EAS reads this file from the Git repository root, even when run in mobile/.
+# It replaces every .gitignore for the upload. Keep only the standalone app.
+# If mobile later imports a workspace package, explicitly include that package.
+/*
+!/mobile
+!/mobile/**
+!/.easignore
+
+# Dependencies are installed on EAS. Never upload local caches or outputs.
+node_modules/
+.expo/
+.expo-shared/
+.gradle/
+.cache/
+.yarn/cache/
+.yarn/unplugged/
+.metro-health-check*
+*.tsbuildinfo
+build/
+dist/
+web-build/
+coverage/
+tmp/
+temp/
+*.log
+*.apk
+*.aab
+*.ipa
+*.hbc
+
+# Continuous Native Generation: app.json + config plugins are the source of truth.
+# EAS prebuild generates fresh native projects with the app-lock native modules.
+/mobile/android/
+/mobile/ios/
+
+# Development-only files are not needed to compile the application.
+/mobile/tests/
+/mobile/__tests__/
+/mobile/docs/
+/mobile/.gitignore
+/mobile/expo-env.d.ts
+**/__mocks__/
+**/*.test.*
+**/*.spec.*
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Inject build variables and signing credentials through EAS, not the archive.
+# EXPO_PUBLIC_* values are public once embedded in the compiled application.
+.env
+.env.*
+credentials.json
+*.keystore
+*.jks
+*.p8
+*.p12
+*.pem
+*.key
+*.mobileprovision
+*.orig.*
+.npmrc
+.yarnrc
+.yarnrc.yml
+
+# Local databases, backups, and private working files must never be uploaded.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3.*
+backups/
+notes/

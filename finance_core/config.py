@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -22,6 +23,7 @@ class CommonSettings:
     timezone: str = "Asia/Jakarta"
     currency: str = "IDR"
     environment: str = "development"
+    allow_sqlite_in_production: bool = False
 
     @property
     def is_production(self) -> bool:
@@ -56,6 +58,7 @@ def get_common_settings(*, load_dotenv_file: bool = True) -> CommonSettings:
         timezone=env_value("TIMEZONE", "Asia/Jakarta"),
         currency=env_value("CURRENCY", "IDR"),
         environment=env_value("ENVIRONMENT", "development"),
+        allow_sqlite_in_production=env_value("ALLOW_SQLITE_IN_PRODUCTION", "0") == "1",
     )
     _validate_settings(settings)
     return settings
@@ -65,6 +68,13 @@ def _validate_settings(settings: CommonSettings) -> None:
     """Reject configurations that would split production data across stores."""
 
     if settings.is_production and not settings.database_url:
+        if settings.allow_sqlite_in_production:
+            path = Path(settings.database_path)
+            if path.is_absolute() and path.is_file():
+                return
+            raise RuntimeError(
+                "Production SQLite opt-in requires DATABASE_PATH to be an absolute existing file."
+            )
         raise RuntimeError(
             "ENVIRONMENT=production requires DATABASE_URL. "
             "Refusing to start on SQLite in production."

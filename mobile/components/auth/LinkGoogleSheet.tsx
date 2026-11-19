@@ -33,6 +33,7 @@ export function LinkGoogleSheet({ visible, onClose, onLinked }: LinkGoogleSheetP
   };
 
   const close = () => {
+    if (loading) return;
     reset();
     onClose();
   };

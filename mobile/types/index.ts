@@ -3,6 +3,7 @@
  */
 
 export type TransactionType = 'income' | 'expense' | 'investment';
+export type TransactionSort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 
 export interface User {
   id: number;
@@ -53,6 +54,70 @@ export interface Transaction {
   note?: string | null;
   asset_name?: string | null;
   transaction_date: string; // YYYY-MM-DD
+  can_edit?: boolean;
+  can_delete?: boolean;
+}
+
+export interface TransactionBrowserFilters {
+  q?: string;
+  start_date?: string;
+  end_date?: string;
+  type?: TransactionType;
+  category_id?: number;
+  min_amount?: number;
+  max_amount?: number;
+}
+
+export interface TransactionPageQuery extends TransactionBrowserFilters {
+  sort?: TransactionSort;
+  page?: number;
+}
+
+export interface TransactionPage {
+  items: Transaction[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export type TransactionAuditAction = 'update' | 'delete';
+export type TransactionAuditSource = 'api' | 'telegram' | 'system';
+export type TransactionAuditReason =
+  | 'direct'
+  | 'debt_sync'
+  | 'debt_delete'
+  | 'payment_delete';
+
+export interface TransactionSnapshot {
+  id: number;
+  type: TransactionType;
+  category_id?: number | null;
+  category_name?: string | null;
+  amount: number;
+  note?: string | null;
+  asset_name?: string | null;
+  transaction_date: string;
+  source_key?: string | null;
+}
+
+export interface TransactionHistoryEntry {
+  id: number;
+  transaction_id: number;
+  action: TransactionAuditAction;
+  source: TransactionAuditSource;
+  reason: TransactionAuditReason;
+  before: TransactionSnapshot;
+  after: TransactionSnapshot | null;
+  created_at: string; // ISO UTC
+}
+
+export interface TransactionUpdatePayload {
+  amount?: number;
+  category_id?: number | null;
+  note?: string | null;
+  asset_name?: string | null;
+  transaction_date?: string;
 }
 
 export interface QuickInputPreview {

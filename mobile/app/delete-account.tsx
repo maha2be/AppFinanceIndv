@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   Pressable,
   StyleSheet,
   Text,
@@ -22,6 +23,9 @@ import { Button } from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
 import { ErrorState } from '../components/ui/ErrorState';
 import { SkeletonRows } from '../components/ui/Skeleton';
+import { getAccountDeletionMethod } from '../utils/accountDeletion';
+import { getAppLockState, subscribeAppLock, withAppLockCredentialPrompt } from '../services/appLock';
+import { isAuthenticated, subscribeSession } from '../services/session';
 
 export default function DeleteAccountScreen() {
   const [user, setUser] = useState<User | null>(null);
@@ -31,6 +35,10 @@ export default function DeleteAccountScreen() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const proofGeneration = useRef(0);
+  const mounted = useRef(true);
+  const googlePrompt = useRef(false);
 
   const clearSecrets = useCallback(() => {
     setPassword('');
@@ -41,10 +49,37 @@ export default function DeleteAccountScreen() {
   useFocusEffect(
     useCallback(() => {
       return () => {
+        proofGeneration.current += 1;
         clearSecrets();
       };
     }, [clearSecrets])
   );
+
+  useEffect(() => {
+    mounted.current = true;
+    const invalidate = () => {
+      proofGeneration.current += 1;
+      clearSecrets();
+    };
+    const lifecycle = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') {
+        if (googlePrompt.current) clearSecrets();
+        else invalidate();
+      }
+    });
+    const unsubscribeLock = subscribeAppLock(() => {
+      const lock = getAppLockState();
+      if ((!lock.ready || lock.locked || lock.covered) && !googlePrompt.current) invalidate();
+    });
+    const unsubscribeSession = subscribeSession(invalidate);
+    return () => {
+      mounted.current = false;
+      proofGeneration.current += 1;
+      lifecycle.remove();
+      unsubscribeLock();
+      unsubscribeSession();
+    };
+  }, [clearSecrets]);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -64,10 +99,12 @@ export default function DeleteAccountScreen() {
     router.back();
   };
 
-  const requiresPassword = Boolean(user?.has_password);
+  const requiresPassword = user === null || getAccountDeletionMethod(user) === 'password';
 
   const handleDeleteAccount = async () => {
-    if (loading || !user) return;
+    if (submitting.current || loading || !user) return;
+    const lock = getAppLockState();
+    if (!isAuthenticated() || !lock.ready || lock.locked || lock.covered) return;
     if (confirmationText.trim() !== 'DELETE') {
       setError('Type DELETE in uppercase to confirm account deletion.');
       return;
@@ -81,6 +118,13 @@ export default function DeleteAccountScreen() {
       return;
     }
 
+    submitting.current = true;
+    const ticket = proofGeneration.current;
+    const stillCurrent = () => {
+      const currentLock = getAppLockState();
+      return mounted.current && ticket === proofGeneration.current && isAuthenticated() &&
+        currentLock.ready && !currentLock.locked && !currentLock.covered;
+    };
     setLoading(true);
     setError(null);
     try {
@@ -91,29 +135,46 @@ export default function DeleteAccountScreen() {
         });
       } else {
         const available = await isGoogleAuthAvailable();
+        if (!stillCurrent()) return;
         if (!available) {
           throw new Error('GOOGLE_UNAVAILABLE');
         }
         await signOutGoogle();
-        const idToken = await requestGoogleIdToken();
+        if (!stillCurrent()) return;
+        let idToken: string | null;
+        googlePrompt.current = true;
+        try {
+          idToken = await withAppLockCredentialPrompt(requestGoogleIdToken);
+        } finally {
+          googlePrompt.current = false;
+        }
         if (!idToken) {
           // User cancelled the Google prompt; never delete or clear session.
           return;
+        }
+        if (!stillCurrent()) {
+          throw new Error('Verification was interrupted. Confirm deletion again.');
         }
         await authApi.deleteAccount({
           confirmation: 'DELETE',
           id_token: idToken,
         });
       }
-      clearSecrets();
-      router.replace('/(auth)/login');
+      if (mounted.current) {
+        clearSecrets();
+        router.replace('/(auth)/login');
+      }
     } catch (err) {
-      setError(
-        describeGoogleError(err) ??
-          describeApiError(err, 'Unable to delete account. Your session and data remain intact.')
-      );
+      if (mounted.current) {
+        setPassword('');
+        setError(
+          describeGoogleError(err) ??
+            describeApiError(err, 'Unable to delete account. Your session and data remain intact.')
+        );
+      }
     } finally {
-      setLoading(false);
+      submitting.current = false;
+      if (mounted.current) setLoading(false);
     }
   };
 
@@ -165,6 +226,7 @@ export default function DeleteAccountScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              editable={!loading}
               autoComplete="password"
               textContentType="password"
               hint={
@@ -189,6 +251,7 @@ export default function DeleteAccountScreen() {
             label="Type DELETE to confirm"
             placeholder="DELETE"
             value={confirmationText}
+            editable={!loading}
             onChangeText={setConfirmationText}
             autoCapitalize="characters"
             autoCorrect={false}

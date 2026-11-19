@@ -77,13 +77,105 @@ def test_postgres_schema_reaches_current_version(postgres_url):
 
     connection = connect_url(postgres_url)
     try:
-        assert run_migrations(connection) == 7
-        assert run_migrations(connection) == 7
-        assert current_version(connection) == 7
+        assert run_migrations(connection) == 8
+        assert run_migrations(connection) == 8
+        assert current_version(connection) == 8
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7]
+        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert connection.execute(
+            "SELECT relrowsecurity FROM pg_class WHERE oid = 'transaction_audit'::regclass"
+        ).fetchone()[0] is True
+        foreign_keys = connection.execute(
+            "SELECT confrelid::regclass::text FROM pg_constraint "
+            "WHERE conrelid = 'transaction_audit'::regclass AND contype = 'f'"
+        ).fetchall()
+        assert [row[0] for row in foreign_keys] == ["users"]
+    finally:
+        connection.close()
+
+
+def test_copy_retains_deleted_history_and_transaction_id_high_water(postgres_url, tmp_path):
+    """Copied audit IDs must never become IDs of new financial transactions."""
+    from finance_core.db.connection import connect, connect_url
+    from finance_core.db.migrations import run_migrations
+    from finance_core.db.transactions import (
+        create_transaction,
+        delete_transaction,
+        list_transaction_history,
+    )
+    from finance_core.db.users import create_mobile_user
+    from scripts.migrate_sqlite_to_postgres import migrate
+
+    source_path = tmp_path / "copy.sqlite3"
+    source = connect(str(source_path))
+    run_migrations(source)
+    user = create_mobile_user(source, email="copy@example.com", password_hash="unused")
+    deleted = create_transaction(
+        source, user_id=user.id, type="expense", category_id=None, amount=100,
+        note="Historical", asset_name=None, transaction_date="2026-11-09",
+    )
+    delete_transaction(source, user_id=user.id, transaction_id=deleted.id, source="telegram")
+    # SQLite's AUTOINCREMENT remembers IDs beyond both live rows and audit rows.
+    source.execute("UPDATE sqlite_sequence SET seq = 100 WHERE name = 'transactions'")
+    source.commit()
+    source.close()
+
+    assert migrate(source_path, postgres_url) >= 2
+    target = connect_url(postgres_url)
+    try:
+        history = list_transaction_history(target, user_id=user.id)
+        assert len(history) == 1
+        assert history[0]["transaction_id"] == deleted.id
+        assert history[0]["source"] == "telegram"
+        fresh = create_transaction(
+            target, user_id=user.id, type="income", category_id=None, amount=200,
+            note="New", asset_name=None, transaction_date="2026-11-09",
+        )
+        assert fresh.id > 100
+        assert list_transaction_history(target, user_id=user.id, transaction_id=fresh.id) == []
+    finally:
+        target.close()
+
+
+def test_postgres_upgrade_from_seven_preserves_live_transactions(postgres_url, monkeypatch):
+    from finance_core.db import migrations, postgres_schema
+    from finance_core.db.connection import connect_url
+    from finance_core.db.migrations import current_version, run_migrations
+    from finance_core.db.transactions import (
+        create_transaction,
+        list_transaction_history,
+        update_transaction,
+    )
+    from finance_core.db.users import create_mobile_user
+
+    connection = connect_url(postgres_url)
+    try:
+        with monkeypatch.context() as previous_schema:
+            previous_schema.setattr(migrations, "SCHEMA_VERSION", 7)
+            previous_schema.setattr(
+                postgres_schema, "_POSTGRES_MIGRATIONS",
+                {version: statements for version, statements in
+                 postgres_schema._POSTGRES_MIGRATIONS.items() if version <= 7},
+            )
+            assert run_migrations(connection) == 7
+        owner = create_mobile_user(connection, email="upgrade@example.com", password_hash="unused")
+        existing = create_transaction(
+            connection, user_id=owner.id, type="expense", category_id=None, amount=100,
+            note="Before upgrade", asset_name=None, transaction_date="2026-11-09",
+        )
+        connection.commit()
+
+        assert run_migrations(connection) == 8
+        assert run_migrations(connection) == current_version(connection) == 8
+        assert list_transaction_history(connection, user_id=owner.id) == []
+        update_transaction(
+            connection, user_id=owner.id, transaction_id=existing.id, amount=200, source="api",
+        )
+        history = list_transaction_history(connection, user_id=owner.id)
+        assert history[0]["before"]["note"] == "Before upgrade"
+        assert history[0]["after"]["amount"] == 200
     finally:
         connection.close()
 
@@ -110,6 +202,24 @@ def test_postgres_api_round_trip(pg_client):
     report = pg_client.get("/api/reports/daily", params={"target_date": "2026-11-02"})
     assert report.status_code == 200, report.text
     assert report.json()["total_expense"] == 25000
+
+    edited = pg_client.put(
+        f"/api/transactions/{transaction['id']}", json={"amount": 30000, "note": None},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["category_id"] == transaction["category_id"]
+    assert edited.json()["note"] is None
+    assert pg_client.delete(f"/api/transactions/{transaction['id']}").status_code == 204
+    history_response = pg_client.get("/api/transactions/history")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert [entry["action"] for entry in history] == ["delete", "update"]
+    assert all(entry["source"] == "api" for entry in history)
+    assert history[1]["before"]["amount"] == 25000
+    assert history[1]["after"]["amount"] == history[0]["before"]["amount"] == 30000
+    assert pg_client.get(
+        "/api/reports/daily", params={"target_date": "2026-11-02"},
+    ).json()["total_expense"] == 0
 
 
 def test_postgres_debt_cash_sync_and_settlement(pg_client):
@@ -237,6 +347,10 @@ def test_postgres_derived_cash_rows_are_locked_and_cleaned_up(pg_client):
 
     remaining = [item["id"] for item in pg_client.get("/api/transactions").json()]
     assert remaining == [manual["id"]]
+    history = pg_client.get("/api/transactions/history").json()
+    assert {entry["transaction_id"] for entry in history} == set(cash_ids)
+    assert all(entry["source"] == "system" and entry["reason"] == "debt_delete"
+               and entry["action"] == "delete" for entry in history)
 
 
 def test_row_iterates_over_values_like_sqlite_row(postgres_url) -> None:
@@ -280,3 +394,199 @@ def test_row_iterates_over_values_like_sqlite_row(postgres_url) -> None:
     # sqlite3.Row membership tests values, not names.
     assert (7 in pg_row) is (7 in lite_row) is True
     assert ("a" in pg_row) is ("a" in lite_row) is False
+
+
+def _browser_sort(rows, sort):
+    from datetime import date as _date
+
+    def ordinal(row):
+        return _date.fromisoformat(row["transaction_date"]).toordinal()
+
+    if sort == "date_desc":
+        return sorted(rows, key=lambda row: (ordinal(row), row["id"]), reverse=True)
+    if sort == "date_asc":
+        return sorted(rows, key=lambda row: (ordinal(row), row["id"]))
+    if sort == "amount_desc":
+        return sorted(
+            rows, key=lambda row: (row["amount"], ordinal(row), row["id"]), reverse=True
+        )
+    return sorted(rows, key=lambda row: (row["amount"], -ordinal(row), -row["id"]))
+
+
+def test_postgres_browser_page_counts_sorts_and_escapes(postgres_url):
+    """The browser query keeps the same semantics on PostgreSQL as on SQLite."""
+
+    from finance_core.db.connection import connect_url
+    from finance_core.db.migrations import run_migrations
+    from finance_core.db.transactions import (
+        count_transactions,
+        list_transactions_page,
+    )
+    from finance_core.db.users import create_mobile_user
+
+    connection = connect_url(postgres_url)
+    try:
+        run_migrations(connection)
+        owner = create_mobile_user(
+            connection, email="browser_pg@example.com", password_hash="unused"
+        )
+        other = create_mobile_user(
+            connection, email="browser_pg_other@example.com", password_hash="unused"
+        )
+
+        from finance_core.db.transactions import create_transaction
+
+        dates = ["2026-01-03", "2026-01-02", "2026-01-01"]
+        amounts = [10_000, 20_000, 10_000]
+        notes = [
+            None,
+            "Diskon 50% akhir tahun",
+            "kode_A1 khusus",
+            "promo!! seru",
+        ]
+        created = []
+        seeded_notes = []
+        for index in range(23):
+            note = notes[index % 4] if index % 7 else None
+            seeded_notes.append(note)
+            created.append(
+                create_transaction(
+                    connection,
+                    user_id=owner.id,
+                    type="expense",
+                    category_id=None,
+                    amount=amounts[index % 3],
+                    note=note,
+                    asset_name=None if index % 5 == 0 else "Dompet Digital",
+                    transaction_date=dates[index % 3],
+                )
+            )
+        for index in range(2):
+            create_transaction(
+                connection,
+                user_id=other.id,
+                type="expense",
+                category_id=None,
+                amount=1_000_000 + index,
+                note="Rahasia lain",
+                asset_name=None,
+                transaction_date="2026-01-02",
+            )
+        connection.commit()
+
+        assert count_transactions(connection, user_id=owner.id) == 23
+        assert count_transactions(connection, user_id=other.id) == 2
+
+        first = list_transactions_page(connection, user_id=owner.id, page=1)
+        second = list_transactions_page(connection, user_id=owner.id, page=2)
+        assert (first.total, first.page_size, first.total_pages) == (23, 20, 2)
+        assert (second.total, second.total_pages) == (23, 2)
+        assert [len(first.items), len(second.items)] == [20, 3]
+
+        collapsed = list_transactions_page(connection, user_id=owner.id, page=99)
+        assert collapsed.page == 2
+        assert len(collapsed.items) == 3
+
+        for sort in ("date_desc", "date_asc", "amount_desc", "amount_asc"):
+            expected = [row["id"] for row in _browser_sort(
+                [
+                    {
+                        "id": item.id,
+                        "amount": item.amount,
+                        "transaction_date": item.transaction_date,
+                    }
+                    for item in created
+                ],
+                sort,
+            )]
+            collected = []
+            for page in (1, 2):
+                collected.extend(
+                    item.id
+                    for item in list_transactions_page(
+                        connection, user_id=owner.id, page=page, sort=sort
+                    ).items
+                )
+            assert collected == expected, sort
+
+        # Literal metacharacters: each pattern matches only rows whose literal
+        # note text contains it, never every row like a wildcard would.
+        def note_matches(fragment):
+            return sum(1 for note in seeded_notes if note and fragment in note)
+
+        assert count_transactions(connection, user_id=owner.id, search="%") == note_matches("%")
+        assert count_transactions(connection, user_id=owner.id, search="_") == note_matches("_")
+        assert count_transactions(connection, user_id=owner.id, search="!") == note_matches("!")
+        assert count_transactions(connection, user_id=owner.id, search="50%") == note_matches("50%")
+        assert note_matches("%") >= 1 and note_matches("%") < 23
+        assert count_transactions(connection, user_id=owner.id, search="' OR 1=1 --") == 0
+        escaped = list_transactions_page(connection, user_id=owner.id, search="kode_A1")
+        assert escaped.total == note_matches("kode_A1")
+        assert escaped.items[0].note == "kode_A1 khusus"
+
+        # Owner isolation holds for both count and rows on PostgreSQL too.
+        assert count_transactions(connection, user_id=other.id, search="kode") == 0
+        other_page = list_transactions_page(connection, user_id=other.id)
+        assert other_page.total == 2
+        assert all(item.user_id == other.id for item in other_page.items)
+    finally:
+        connection.close()
+
+
+def test_postgres_api_page_endpoint_fixed_size_and_literal_search(pg_client):
+    """The route keeps a fixed 20-row page and treats LIKE text literally."""
+
+    created = []
+    for index in range(22):
+        response = pg_client.post(
+            "/api/transactions",
+            json={
+                "type": "expense",
+                "category_name": "Makan & Minum",
+                "amount": 1_000 + (index % 3) * 1_000,
+                "note": (
+                    "Diskon 50% akhir tahun"
+                    if index == 3
+                    else ("kode_A1 khusus" if index == 4 else f"catatan {index}")
+                ),
+                "transaction_date": f"2026-01-{(index % 3) + 1:02d}",
+            },
+        )
+        assert response.status_code == 201, response.text
+        created.append(response.json())
+
+    first = pg_client.get("/api/transactions/page", params={"page": 1})
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["total"] == 22
+    assert body["page_size"] == 20
+    assert body["total_pages"] == 2
+    assert len(body["items"]) == 20
+
+    second = pg_client.get("/api/transactions/page", params={"page": 2}).json()
+    assert len(second["items"]) == 2
+    all_ids = [item["id"] for item in body["items"] + second["items"]]
+    assert len(all_ids) == len(set(all_ids)) == 22
+
+    oversized = pg_client.get(
+        "/api/transactions/page", params={"page": 1, "page_size": 100}
+    ).json()
+    assert oversized["page_size"] == 20
+    assert len(oversized["items"]) == 20
+
+    assert pg_client.get(
+        "/api/transactions/page", params={"q": "%"}
+    ).json()["total"] == 1
+    assert pg_client.get(
+        "/api/transactions/page", params={"q": "_"}
+    ).json()["total"] == 1
+    assert pg_client.get(
+        "/api/transactions/page", params={"q": "' OR 1=1 --"}
+    ).json()["total"] == 0
+
+    oldest = pg_client.get(
+        "/api/transactions/page", params={"sort": "date_asc", "page": 1}
+    ).json()["items"]
+    assert [item["transaction_date"] for item in oldest] == sorted(
+        item["transaction_date"] for item in oldest
+    )
