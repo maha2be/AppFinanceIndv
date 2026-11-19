@@ -52,6 +52,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
 
   const [pin, setPin] = useState('');
   const [pattern, setPattern] = useState<number[]>([]);
+  const [patternDrawing, setPatternDrawing] = useState(false);
   const [unlockMethod, setUnlockMethod] = useState<UnlockMethod>('pin');
   const [localError, setLocalError] = useState<string | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -63,6 +64,9 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
   const patternRef = useRef<number[]>([]);
   const mountedRef = useRef(true);
   const actionLockRef = useRef(false);
+  const unlockMethodRef = useRef<UnlockMethod>('pin');
+  const foregroundRef = useRef(AppState.currentState == null || AppState.currentState === 'active');
+  unlockMethodRef.current = unlockMethod;
 
   const updatePin = useCallback((next: string) => {
     const clean = sanitizePinInput(next);
@@ -75,11 +79,20 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
     setPattern(next);
   }, []);
 
+  const handleUnlockPatternDrawingChange = useCallback((drawing: boolean) => {
+    if (!mountedRef.current) return;
+    const latest = getAppLockState();
+    setPatternDrawing(drawing && foregroundRef.current && unlockMethodRef.current === 'pattern' &&
+      latest.ready && latest.enabled && latest.locked && !latest.covered && !latest.storageError &&
+      latest.patternEnabled && !latest.busy && !actionLockRef.current && latest.retryAt <= Date.now());
+  }, []);
+
   const clearPinFields = useCallback(() => {
     pinRef.current = '';
     patternRef.current = [];
     setPin('');
     setPattern([]);
+    setPatternDrawing(false);
   }, []);
 
   useEffect(() => {
@@ -93,11 +106,13 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      foregroundRef.current = nextState === 'active';
       if (nextState === 'background' || nextState === 'inactive') {
         pinRef.current = '';
         patternRef.current = [];
         setPin('');
         setPattern([]);
+        setPatternDrawing(false);
         setUnlockMethod('pin');
         setLocalError(null);
       }
@@ -108,17 +123,18 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
   }, []);
 
   useEffect(() => {
-    if (lockState.covered || !lockState.locked || !lockState.ready) {
+    if (lockState.covered || !lockState.locked || !lockState.ready || lockState.storageError) {
       clearPinFields();
       setUnlockMethod('pin');
       setLocalError(null);
     }
-  }, [lockState.covered, lockState.locked, lockState.ready, clearPinFields]);
+  }, [lockState.covered, lockState.locked, lockState.ready, lockState.storageError, clearPinFields]);
 
   useEffect(() => {
     if (!lockState.patternEnabled && unlockMethod === 'pattern') {
       patternRef.current = [];
       setPattern([]);
+      setPatternDrawing(false);
       setUnlockMethod('pin');
     }
   }, [lockState.patternEnabled, unlockMethod]);
@@ -177,6 +193,10 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
   }, [inCooldown, clearPinFields]);
 
   const isBusy = lockState.busy || signingOut || retryingBoot;
+
+  useEffect(() => {
+    if (isBusy) setPatternDrawing(false);
+  }, [isBusy]);
 
   const handlePinUnlock = async () => {
     if (actionLockRef.current || isBusy || inCooldown) {
@@ -424,6 +444,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
         bottomInset
         keyboardBehavior="padding"
         contentStyle={styles.scrollContent}
+        scrollEnabled={!patternDrawing}
       >
         <View style={styles.brand}>
           <View style={styles.iconCircle}>
@@ -492,6 +513,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
             {unlockMethod === 'pattern' && lockState.patternEnabled ? (
               <PatternInput
                 value={pattern}
+                onDrawingChange={handleUnlockPatternDrawingChange}
                 onChange={(next) => {
                   if (localError) {
                     setLocalError(null);
