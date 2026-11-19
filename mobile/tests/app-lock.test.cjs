@@ -1911,7 +1911,7 @@ test('the unlock view defaults to PIN, offers a pattern fallback, and clears tra
   assert.match(view, /'Gunakan pola kunci'/);
   assert.match(view, /'Gunakan PIN 6 digit'/);
   assert.match(view, /patternRef\.current = \[\];[\s\S]*setPattern\(\[\]\);/);
-  assert.match(view, /AppState\.addEventListener\('change'[\s\S]*setPattern\(\[\]\)/);
+  assert.match(view, /AppState\.addEventListener\('change'[\s\S]*clearPinFields\(\)/);
 
   assert.match(input, /accessibilityRole="button"/);
   assert.doesNotMatch(input, /Mode ketuk titik berurutan|Mode garis sentuh/);
@@ -1920,7 +1920,8 @@ test('the unlock view defaults to PIN, offers a pattern fallback, and clears tra
   assert.match(input, /onStartShouldSetResponder/);
   assert.match(input, /onResponderMove/);
   assert.match(input, /const handleClear = useCallback/);
-  assert.doesNotMatch(input, /onSubmit|onComplete|autoSubmit/i, 'the grid must not auto-submit');
+  assert.doesNotMatch(input, /onSubmit|autoSubmit/i, 'the grid must not expose automatic submission');
+  assert.match(input, /onComplete\?:/, 'release completion must remain an optional consumer callback');
 });
 
 test('an Android background during the credential sheet holds the proof until the app lock is unlocked', async () => {
@@ -2058,4 +2059,194 @@ test('pattern setup snapshots the caller input before the first await', async ()
 
   await lock(harness);
   assert.equal(await harness.module.unlockWithPattern(PATTERN), true, 'the mutated UI array must not change the saved pattern');
+});
+
+test('pattern line visibility defaults visible for legacy records and persists hidden across reload', async () => {
+  const harness = createHarness();
+  await preparePattern(harness);
+  const legacy = storedRecord(harness);
+  delete legacy.patternLinesVisible;
+  harness.store.data.set('finance.appLock.v1', JSON.stringify(legacy));
+  const cold = reload(harness);
+  await cold.module.hydrateAppLock();
+  assert.equal(cold.state().patternLinesVisible, true);
+  assert.equal(await cold.module.unlockWithPin(PIN), true);
+  await cold.module.setAppLockPatternLines(PIN, false);
+  assert.equal(cold.state().patternLinesVisible, false);
+  assert.equal(storedRecord(cold).patternLinesVisible, false);
+  const hidden = reload(cold);
+  await hidden.module.hydrateAppLock();
+  assert.equal(hidden.state().patternLinesVisible, false);
+  assert.equal(hidden.state().locked, true);
+  assert.equal(await hidden.module.unlockWithPattern(PATTERN), true);
+});
+
+test('stored pattern line visibility accepts only booleans and corrupt values fail closed', async () => {
+  const harness = createHarness();
+  await preparePattern(harness);
+  const valid = storedRecord(harness);
+  for (const patternLinesVisible of [null, 0, 'false', {}, []]) {
+    harness.store.data.set('finance.appLock.v1', JSON.stringify({ ...valid, patternLinesVisible }));
+    const cold = reload(harness);
+    await cold.module.hydrateAppLock();
+    assert.equal(cold.state().locked, true);
+    assert.equal(cold.state().storageError, true, String(patternLinesVisible));
+    assert.equal(await cold.module.unlockWithPattern(PATTERN), false);
+  }
+});
+
+test('changing pattern line visibility requires six-digit current PIN, boolean choice, and unlocked record', async () => {
+  const harness = createHarness();
+  await preparePattern(harness);
+  const before = storedRecord(harness);
+  for (const invalid of ['', '24681', '２４６８１３', '000000']) {
+    await expectRejects(harness.module.setAppLockPatternLines(invalid, false));
+    assert.equal(harness.state().patternLinesVisible, true);
+    assert.deepEqual(storedRecord(harness).pattern, before.pattern);
+  }
+  for (const invalid of [undefined, null, 0, 'false']) {
+    await expectRejects(harness.module.setAppLockPatternLines(PIN, invalid));
+    assert.equal(harness.state().patternLinesVisible, true);
+  }
+  await harness.module.setAppLockPattern(PIN, null);
+  await expectRejects(harness.module.setAppLockPatternLines(PIN, false));
+  assert.equal(storedRecord(harness).pattern, undefined, 'line preferences cannot re-enable a removed pattern');
+  await harness.module.setAppLockPattern(PIN, PATTERN);
+  await lock(harness);
+  await expectRejects(harness.module.setAppLockPatternLines(PIN, false));
+  assert.equal(harness.state().locked, true);
+  assert.equal(harness.state().patternLinesVisible, true);
+  const empty = createHarness();
+  await empty.module.hydrateAppLock();
+  await expectRejects(empty.module.setAppLockPatternLines(PIN, false));
+  assert.equal(empty.store.data.size, 0);
+});
+
+test('hidden pattern lines preserve PIN and pattern proofs across PIN, pattern, and biometric settings changes', async () => {
+  const harness = createHarness();
+  const before = await preparePattern(harness);
+  await harness.module.setAppLockPatternLines(PIN, false);
+  const hidden = storedRecord(harness);
+  assert.equal(hidden.secret, before.secret);
+  assert.equal(hidden.verifier, before.verifier);
+  assert.deepEqual(hidden.pattern, before.pattern);
+  await harness.module.setAppLockBiometrics(PIN, true);
+  await harness.module.changeAppLockPin(PIN, NEXT_PIN);
+  assert.equal(storedRecord(harness).patternLinesVisible, false);
+  assert.deepEqual(storedRecord(harness).pattern, before.pattern);
+  await harness.module.setAppLockPattern(NEXT_PIN, NEXT_PATTERN);
+  assert.equal(storedRecord(harness).patternLinesVisible, false);
+  const cold = reload(harness);
+  await cold.module.hydrateAppLock();
+  assert.equal(cold.state().patternLinesVisible, false);
+  assert.equal(await cold.module.unlockWithPattern(NEXT_PATTERN), true);
+  await lock(cold);
+  assert.equal(await cold.module.unlockWithPin(NEXT_PIN), true);
+});
+
+test('pattern line changes await durable storage and reject overlapping settings mutations', async (t) => {
+  const harness = createHarness();
+  const before = await preparePattern(harness);
+  const pending = deferred();
+  const attempted = [];
+  const committed = [];
+  const write = harness.store.module.setItemAsync;
+  harness.store.module.setItemAsync = async (key, value) => {
+    const next = JSON.parse(value);
+    attempted.push(next);
+    if (next.patternLinesVisible === false) await pending.promise;
+    await write(key, value);
+    committed.push(next);
+  };
+  t.after(() => pending.resolve());
+  let finished = false;
+  const saving = settle(harness.module.setAppLockPatternLines(PIN, false)).then((result) => {
+    finished = true;
+    return result;
+  });
+  await waitFor(() => attempted.some((next) => next.patternLinesVisible === false),
+    'changed line visibility write did not start after PIN verification');
+  assert.deepEqual(attempted.map((next) => next.patternLinesVisible), [before.patternLinesVisible, false]);
+  assert.deepEqual(committed.map((next) => next.patternLinesVisible), [before.patternLinesVisible],
+    'PIN retry-budget reset must finish before the preference write is held');
+  assert.deepEqual(storedRecord(harness), before);
+  assert.equal(finished, false);
+  assert.equal(harness.state().busy, true);
+  assert.equal(harness.state().patternLinesVisible, true);
+  await expectRejects(harness.module.setAppLockPatternLines(PIN, true));
+  await expectRejects(harness.module.changeAppLockPin(PIN, NEXT_PIN));
+  assert.equal(attempted.length, 2, 'overlapping mutations cannot start another write');
+  pending.resolve();
+  assert.equal((await saving).ok, true);
+  assert.deepEqual(committed.map((next) => next.patternLinesVisible), [before.patternLinesVisible, false]);
+  assert.equal(storedRecord(harness).patternLinesVisible, false);
+  assert.equal(harness.state().patternLinesVisible, false);
+  assert.equal(harness.state().busy, false);
+});
+
+test('background during a pattern line write rolls back visibility durably without opening the lock', async (t) => {
+  const harness = createHarness();
+  const before = await preparePattern(harness);
+  const count = harness.store.calls.set;
+  const pending = deferred();
+  const attempted = [];
+  const committed = [];
+  const write = harness.store.module.setItemAsync;
+  harness.store.module.setItemAsync = async (key, value) => {
+    const next = JSON.parse(value);
+    attempted.push(next);
+    if (next.patternLinesVisible === false) await pending.promise;
+    await write(key, value);
+    committed.push(next);
+  };
+  t.after(() => pending.resolve());
+  const saving = settle(harness.module.setAppLockPatternLines(PIN, false));
+  await waitFor(() => attempted.some((next) => next.patternLinesVisible === false),
+    'changed line visibility write did not start after PIN verification');
+  assert.deepEqual(attempted.map((next) => next.patternLinesVisible), [before.patternLinesVisible, false]);
+  assert.deepEqual(committed.map((next) => next.patternLinesVisible), [before.patternLinesVisible]);
+  assert.deepEqual(storedRecord(harness), before);
+  harness.module.handleAppLockState('background');
+  pending.resolve();
+  assert.equal((await saving).ok, false);
+  assert.deepEqual(attempted.map((next) => next.patternLinesVisible), [before.patternLinesVisible, false, before.patternLinesVisible]);
+  assert.deepEqual(committed.map((next) => next.patternLinesVisible), [before.patternLinesVisible, false, before.patternLinesVisible],
+    'the changed preference must reach storage before the old preference is restored');
+  assert.equal(harness.store.calls.set, count + 3);
+  assert.equal(harness.state().locked, true);
+  assert.equal(harness.state().patternLinesVisible, true);
+  assert.deepEqual(storedRecord(harness), before);
+  const cold = reload(harness);
+  await cold.module.hydrateAppLock();
+  assert.equal(cold.state().patternLinesVisible, true);
+  assert.equal(cold.state().locked, true);
+  assert.equal(await cold.module.unlockWithPattern(PATTERN), true);
+});
+
+test('pattern line storage failures reject and fail closed without losing the previous unlock proofs', async () => {
+  const harness = createHarness();
+  const before = await preparePattern(harness);
+  const attempted = [];
+  const committed = [];
+  const write = harness.store.module.setItemAsync;
+  harness.store.module.setItemAsync = async (key, value) => {
+    const next = JSON.parse(value);
+    attempted.push(next);
+    if (next.patternLinesVisible === false) throw new Error('secure store preference write failed');
+    await write(key, value);
+    committed.push(next);
+  };
+  await expectRejects(harness.module.setAppLockPatternLines(PIN, false));
+  assert.deepEqual(attempted.map((next) => next.patternLinesVisible), [before.patternLinesVisible, false]);
+  assert.deepEqual(committed.map((next) => next.patternLinesVisible), [before.patternLinesVisible],
+    'only the changed preference write fails, not the preceding PIN verification write');
+  assert.equal(harness.state().storageError, true);
+  assert.equal(harness.state().locked, true);
+  assert.equal(harness.state().patternLinesVisible, true);
+  assert.deepEqual(storedRecord(harness), before);
+  harness.store.module.setItemAsync = write;
+  const cold = reload(harness);
+  await cold.module.hydrateAppLock();
+  assert.equal(cold.state().patternLinesVisible, true);
+  assert.equal(await cold.module.unlockWithPattern(PATTERN), true);
 });

@@ -15,6 +15,10 @@ export interface PatternInputProps {
   onChange: (value: number[]) => void;
   /** Let a scrollable parent suspend scrolling while a node-started drag is active. */
   onDrawingChange?: (drawing: boolean) => void;
+  /** Snapshot a node-started gesture only on release, never on cancellation. */
+  onComplete?: (value: number[]) => void;
+  /** Hide only connecting segments; dot feedback and gesture handling stay unchanged. */
+  showLines?: boolean;
   disabled?: boolean;
   label?: string;
   hint?: string;
@@ -87,6 +91,8 @@ export function PatternInput({
   value,
   onChange,
   onDrawingChange,
+  onComplete,
+  showLines = true,
   disabled = false,
   label,
   hint,
@@ -97,9 +103,14 @@ export function PatternInput({
   const activePatternRef = useRef<number[]>(value);
   const drawingRef = useRef(false);
   const drawingChangeRef = useRef(onDrawingChange);
+  const completeRef = useRef(onComplete);
+  const enabledRef = useRef(!disabled);
+  const mountedRef = useRef(true);
 
   activePatternRef.current = value;
   drawingChangeRef.current = onDrawingChange;
+  completeRef.current = onComplete;
+  enabledRef.current = !disabled;
 
   const setDrawing = useCallback((drawing: boolean) => {
     if (drawingRef.current === drawing) return;
@@ -108,12 +119,16 @@ export function PatternInput({
     drawingChangeRef.current?.(drawing);
   }, []);
 
-  useEffect(() => () => {
-    activePatternRef.current = [];
-    if (drawingRef.current) {
-      drawingRef.current = false;
-      drawingChangeRef.current?.(false);
-    }
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      activePatternRef.current = [];
+      if (drawingRef.current) {
+        drawingRef.current = false;
+        drawingChangeRef.current?.(false);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -146,7 +161,7 @@ export function PatternInput({
 
   const handleResponderGrant = useCallback(
     (event: GestureResponderEvent) => {
-      if (disabled) {
+      if (!mountedRef.current || !enabledRef.current) {
         return;
       }
       const { locationX, locationY } = event.nativeEvent;
@@ -163,7 +178,7 @@ export function PatternInput({
 
   const handleResponderMove = useCallback(
     (event: GestureResponderEvent) => {
-      if (disabled || !drawingRef.current) {
+      if (!mountedRef.current || !enabledRef.current || !drawingRef.current) {
         return;
       }
       const { locationX, locationY } = event.nativeEvent;
@@ -173,7 +188,10 @@ export function PatternInput({
   );
 
   const handleResponderRelease = useCallback(() => {
+    if (!mountedRef.current || !drawingRef.current) return;
+    const candidate = [...activePatternRef.current];
     setDrawing(false);
+    if (mountedRef.current && enabledRef.current && candidate.length > 0) completeRef.current?.(candidate);
   }, [setDrawing]);
 
   const handleResponderTerminate = useCallback(() => {
@@ -229,7 +247,7 @@ export function PatternInput({
           ]}
         >
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            {value.map((node, index) => {
+            {showLines && value.map((node, index) => {
               if (index === 0) {
                 return null;
               }

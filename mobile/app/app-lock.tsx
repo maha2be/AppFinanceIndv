@@ -27,11 +27,12 @@ import {
   hydrateAppLock,
   setAppLockBiometrics,
   setAppLockPattern,
+  setAppLockPatternLines,
   subscribeAppLock,
 } from '../services/appLock';
 
 const PIN_PATTERN = /^[0-9]{6}$/;
-type ManagementView = 'overview' | 'enable' | 'change-pin' | 'biometrics' | 'pattern' | 'remove-pattern' | 'disable';
+type ManagementView = 'overview' | 'enable' | 'change-pin' | 'biometrics' | 'pattern' | 'pattern-display' | 'remove-pattern' | 'disable';
 type PatternSetupStep = 'summary' | 'draw' | 'repeat';
 
 function sanitizePinInput(value: string): string {
@@ -56,6 +57,7 @@ export default function AppLockSettingsScreen() {
   const [newPattern, setNewPattern] = useState<number[]>([]);
   const [confirmPattern, setConfirmPattern] = useState<number[]>([]);
   const [patternStep, setPatternStep] = useState<PatternSetupStep>('summary');
+  const [patternLinesDraft, setPatternLinesDraft] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [checkingBiometrics, setCheckingBiometrics] = useState(false);
@@ -69,6 +71,7 @@ export default function AppLockSettingsScreen() {
   const newPatternRef = useRef<number[]>([]);
   const confirmPatternRef = useRef<number[]>([]);
   const patternStepRef = useRef<PatternSetupStep>('summary');
+  const patternLinesDraftRef = useRef<boolean | null>(null);
   const viewRef = useRef<ManagementView>('overview');
   const mountedRef = useRef(true);
   const focusedRef = useRef(true);
@@ -92,10 +95,12 @@ export default function AppLockSettingsScreen() {
     newPatternRef.current = [];
     confirmPatternRef.current = [];
     patternStepRef.current = 'summary';
+    patternLinesDraftRef.current = null;
     if (mountedRef.current) {
       setNewPattern([]);
       setConfirmPattern([]);
       setPatternStep('summary');
+      setPatternLinesDraft(null);
       setPatternDrawing(false);
     }
   }, [clearPinFields]);
@@ -139,10 +144,11 @@ export default function AppLockSettingsScreen() {
   }, [returnToOverview]);
 
   useEffect(() => {
-    if (!lockState.ready || lockState.locked || lockState.covered || lockState.storageError) {
+    if (!lockState.ready || lockState.locked || lockState.covered || lockState.storageError ||
+      (!lockState.patternEnabled && viewRef.current === 'pattern-display')) {
       returnToOverview();
     }
-  }, [lockState.ready, lockState.locked, lockState.covered, lockState.storageError, returnToOverview]);
+  }, [lockState.ready, lockState.locked, lockState.covered, lockState.storageError, lockState.patternEnabled, returnToOverview]);
 
   useEffect(() => {
     let active = true;
@@ -193,7 +199,8 @@ export default function AppLockSettingsScreen() {
   const canManage = (expectedView: ManagementView) => {
     const latest = getAppLockState();
     return canNavigate() && hasSafeDeviceState() && latest.retryAt <= Date.now() &&
-      viewRef.current === expectedView && (expectedView === 'enable' ? !latest.enabled : latest.enabled);
+      viewRef.current === expectedView && (expectedView === 'enable' ? !latest.enabled : latest.enabled) &&
+      (expectedView !== 'pattern-display' || latest.patternEnabled);
   };
   const isCurrentAction = (ticket: number, expectedView: ManagementView) =>
     mountedRef.current && focusedRef.current && foregroundRef.current &&
@@ -220,12 +227,17 @@ export default function AppLockSettingsScreen() {
     const latest = getAppLockState();
     if (!canNavigate() || viewRef.current !== 'overview' || !hasSafeDeviceState() || latest.retryAt > Date.now()) return;
     if (nextView === 'enable' ? latest.enabled : !latest.enabled) return;
+    if (nextView === 'pattern-display' && !latest.patternEnabled) return;
     returnToOverview();
     viewRef.current = nextView;
     setView(nextView);
     if (nextView === 'pattern') {
       patternStepRef.current = 'draw';
       setPatternStep('draw');
+    } else if (nextView === 'pattern-display') {
+      const visible = latest.patternLinesVisible !== false;
+      patternLinesDraftRef.current = visible;
+      setPatternLinesDraft(visible);
     }
   };
 
@@ -370,6 +382,42 @@ export default function AppLockSettingsScreen() {
       );
     } catch (err) {
       operationFailed(err, ticket, 'biometrics', 'Gagal memperbarui pengaturan sidik jari / biometrik.');
+    } finally {
+      finishSubmission();
+    }
+  };
+
+  const handleSelectPatternLines = (visible: boolean) => {
+    if (!canManage('pattern-display')) return;
+    actionGenerationRef.current += 1;
+    patternLinesDraftRef.current = visible;
+    setPatternLinesDraft(visible);
+    setError(null);
+  };
+
+  const handleSavePatternLines = async () => {
+    if (!canManage('pattern-display')) return;
+    const currCandidate = currentPinRef.current;
+    const visible = patternLinesDraftRef.current;
+    if (!PIN_PATTERN.test(currCandidate)) {
+      setError('Enter your current six-digit PIN to change pattern line visibility.');
+      return;
+    }
+    if (visible === null) {
+      setError('Choose whether to show pattern lines.');
+      return;
+    }
+    const ticket = startSubmission();
+    try {
+      await setAppLockPatternLines(currCandidate, visible);
+      operationSucceeded(
+        ticket, 'pattern-display', 'Pattern display updated',
+        visible
+          ? 'Connecting lines are visible on the unlock screen.'
+          : 'Connecting lines are hidden on the unlock screen. Selected dots remain visible.'
+      );
+    } catch (err) {
+      operationFailed(err, ticket, 'pattern-display', 'Unable to update pattern line visibility.');
     } finally {
       finishSubmission();
     }
@@ -524,6 +572,7 @@ export default function AppLockSettingsScreen() {
     : view === 'change-pin' ? 'Ganti PIN'
     : view === 'biometrics' ? 'Sidik jari / biometrik'
     : view === 'pattern' ? 'Pola kunci (3x3)'
+    : view === 'pattern-display' ? 'Pattern line visibility'
     : view === 'remove-pattern' ? 'Hapus pola kunci'
     : view === 'disable' ? 'Matikan kunci aplikasi'
     : 'Kunci aplikasi';
@@ -598,6 +647,16 @@ export default function AppLockSettingsScreen() {
                 <Text style={styles.sectionLabel} accessibilityRole="header">Unlock methods</Text>
                 <ActionRow reducedMotion={reducedMotion} icon="key-outline" title="Ganti PIN" hint="6-digit PIN. Active and required as your fallback." onPress={() => openView('change-pin')} disabled={fieldsDisabled} />
                 <ActionRow reducedMotion={reducedMotion} icon="grid-outline" title={lockState.patternEnabled ? 'Ubah pola kunci' : 'Atur pola kunci'} hint={lockState.patternEnabled ? 'Active. Optional drag pattern alongside your PIN.' : 'Off. Add an optional 4-9 dot drag pattern.'} onPress={() => openView('pattern')} disabled={fieldsDisabled} />
+                {lockState.patternEnabled ? (
+                  <ActionRow
+                    reducedMotion={reducedMotion}
+                    icon={lockState.patternLinesVisible !== false ? 'eye-outline' : 'eye-off-outline'}
+                    title="Pattern line visibility"
+                    hint={lockState.patternLinesVisible !== false ? 'Visible on unlock' : 'Hidden on unlock'}
+                    onPress={() => openView('pattern-display')}
+                    disabled={fieldsDisabled}
+                  />
+                ) : null}
                 <ActionRow reducedMotion={reducedMotion} icon="finger-print-outline" title="Sidik jari / biometrik" hint={biometricHint} onPress={() => openView('biometrics')} disabled={fieldsDisabled || checkingBiometrics || !biometricUsable} busy={checkingBiometrics} last />
               </View>
               <View style={styles.dangerArea}>
@@ -626,6 +685,39 @@ export default function AppLockSettingsScreen() {
               <PinField label="PIN saat ini" value={currentPin} onChange={(text) => updatePin(text, 'current')} onSubmit={handleToggleBiometrics} disabled={fieldsDisabled || checkingBiometrics || !biometricUsable} />
               {errorNotice}
               <LockButton reducedMotion={reducedMotion} title={lockState.biometricsEnabled ? 'Disable biometrics' : 'Enable biometrics'} onPress={handleToggleBiometrics} busy={isBusy} disabled={inCooldown || checkingBiometrics || !biometricUsable} />
+            </>
+          ) : view === 'pattern-display' ? (
+            <>
+              <Text style={styles.body}>
+                This changes only connecting lines on the unlock screen. Selected dots stay visible.
+                Setup and repeat always show lines.
+              </Text>
+              <View accessibilityRole="radiogroup" accessibilityLabel="Connecting lines">
+                {([{ visible: true, label: 'Show lines' }, { visible: false, label: 'Hide lines' }] as const).map(({ visible, label }) => {
+                  const selected = patternLinesDraft === visible;
+                  return (
+                    <Pressable
+                      key={label}
+                      onPress={() => handleSelectPatternLines(visible)}
+                      disabled={fieldsDisabled}
+                      accessibilityRole="radio"
+                      accessibilityLabel={label}
+                      accessibilityState={{ checked: selected, selected, disabled: fieldsDisabled }}
+                      style={({ pressed }) => [styles.actionRow, !visible && styles.lastRow, pressed && styles.pressed, pressed && !reducedMotion && styles.pressedScale]}
+                    >
+                      <View style={styles.rowBody}>
+                        <Text style={[styles.rowTitle, fieldsDisabled && styles.disabledText]}>{label}</Text>
+                      </View>
+                      <View style={styles.rowAccessory} accessible={false} importantForAccessibility="no-hide-descendants">
+                        <Ionicons name={selected ? 'radio-button-on-outline' : 'radio-button-off-outline'} size={20} color={Colors.inkSoft} />
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <PinField label="PIN saat ini" value={currentPin} onChange={(text) => updatePin(text, 'current')} onSubmit={handleSavePatternLines} disabled={fieldsDisabled} />
+              {errorNotice}
+              <LockButton reducedMotion={reducedMotion} title="Save" onPress={handleSavePatternLines} busy={isBusy} disabled={inCooldown || patternLinesDraft === null} />
             </>
           ) : view === 'pattern' ? (
             <>

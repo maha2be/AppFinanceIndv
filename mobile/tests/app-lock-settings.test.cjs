@@ -28,6 +28,7 @@ function createSettingsHarness(overrides = {}, behavior = {}) {
     covered: false,
     busy: false,
     patternEnabled: false,
+    patternLinesVisible: true,
     biometricsEnabled: false,
     error: null,
     retryAt: 0,
@@ -315,6 +316,22 @@ test('backgrounding the app clears wizard drafts and secrets', async () => {
   assert.equal(harness.allByType('Input').length, 0, 'the overview must not retain any PIN field');
   assert.equal(calls.setAppLockPattern.length, 0);
   assert.ok(harness.byLabel('Atur pola kunci'), 'summary is restored');
+});
+
+test('pattern setup keeps connecting lines visible and remains manual when unlock lines are hidden', async () => {
+  const { harness, calls } = createSettingsHarness({ patternLinesVisible: false });
+  await harness.mount();
+  await startSetup(harness);
+  assert.notEqual(harness.byLabel('Pola baru 3x3').props.showLines, false);
+  assert.equal(harness.byLabel('Pola baru 3x3').props.onComplete, undefined);
+  harness.patternChange('Pola baru 3x3', PATTERN);
+  assert.equal(calls.setAppLockPattern.length, 0);
+  await harness.press('Lanjut ke konfirmasi pola');
+  assert.notEqual(harness.byLabel('Konfirmasi pola baru 3x3').props.showLines, false);
+  assert.equal(harness.byLabel('Konfirmasi pola baru 3x3').props.onComplete, undefined);
+  harness.patternChange('Konfirmasi pola baru 3x3', PATTERN);
+  assert.equal(calls.setAppLockPattern.length, 0, 'even a matching repeat must not save until explicitly confirmed');
+  harness.unmount();
 });
 
 test('both pattern stages suspend page scrolling during drawing and restore it on release or exit', async (t) => {

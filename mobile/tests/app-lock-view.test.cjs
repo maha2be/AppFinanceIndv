@@ -10,6 +10,7 @@ function unlockHarness(t, behavior = {}) {
     ready: true, supported: true, enabled: true, locked: true, covered: false,
     busy: false, patternEnabled: true, biometricsEnabled: true, error: null,
     storageError: false, retryAt: 0, failedAttempts: 0,
+    patternLinesVisible: true, ...behavior.state,
   };
   const calls = { pattern: [], pin: [], biometrics: 0, signOut: 0 };
   const service = {
@@ -19,7 +20,13 @@ function unlockHarness(t, behavior = {}) {
     hydrateAppLock: async () => {},
     unlockWithPattern: async (pattern) => {
       calls.pattern.push(Array.from(pattern));
+      if (behavior.pending) await behavior.pending.promise;
       if (behavior.patternError) throw new Error('Pattern verification failed.');
+      if (behavior.patternResult === false) {
+        state.failedAttempts += 1;
+        state.error = 'Pola salah.';
+        return false;
+      }
       state.locked = false;
       return true;
     },
@@ -59,7 +66,7 @@ function drawing(harness, active) {
   harness.flush();
 }
 
-test('locked pattern drawing suspends scrolling until release without auto-unlocking', async (t) => {
+test('locked pattern drawing suspends scrolling without unlocking before completion and retains manual fallback', async (t) => {
   const { harness, calls } = unlockHarness(t);
   await harness.mount();
   assert.equal(scrolling(harness), true);
@@ -165,4 +172,140 @@ test('obsolete drawing callbacks cannot update a disposed unlock screen', async 
   harness.unmount();
   assert.doesNotThrow(() => { stale(false); stale(true); });
   assert.deepEqual(calls.pattern, []);
+});
+
+function completion(harness) {
+  const grid = harness.byLabel('Pola buka kunci aplikasi');
+  assert.equal(typeof grid.props.onComplete, 'function', 'unlock must opt in to release completion');
+  return grid.props.onComplete;
+}
+
+function deferredUnlock() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+test('release completion verifies its snapshot rather than an older rendered pattern draft', async (t) => {
+  const { harness, state, calls } = unlockHarness(t);
+  await harness.mount();
+  await harness.press('Gunakan pola kunci');
+  harness.patternChange('Pola buka kunci aplikasi', [0, 1, 2, 5]);
+  assert.deepEqual(calls.pattern, [], 'node changes never verify');
+  assert.ok(harness.byLabel('Buka kunci dengan pola'), 'manual accessibility fallback remains rendered');
+  await completion(harness)(PATTERN);
+  await harness.settle();
+  assert.deepEqual(calls.pattern, [PATTERN]);
+  assert.equal(state.locked, false);
+  assert.equal(scrolling(harness), true);
+});
+
+test('empty, short, and noncanonical release candidates are rejected locally without using attempt budget', async (t) => {
+  const { harness, state, calls } = unlockHarness(t);
+  await harness.mount();
+  await harness.press('Gunakan pola kunci');
+  for (const candidate of [[], [0], [0, 3, 6], [0, 2, 5, 8]]) {
+    await completion(harness)(candidate);
+    await harness.settle();
+    assert.deepEqual(calls.pattern, []);
+    assert.equal(state.failedAttempts, 0);
+    assert.equal(state.locked, true);
+    assert.ok(harness.textMatching(/minimal 4 titik/));
+  }
+});
+
+test('release and manual unlock stay single flight in either pending race order', async (t) => {
+  for (const first of ['release', 'manual']) {
+    const pending = deferredUnlock();
+    const { harness, calls } = unlockHarness(t, { pending });
+    t.after(() => pending.resolve());
+    await harness.mount();
+    await harness.press('Gunakan pola kunci');
+    harness.patternChange('Pola buka kunci aplikasi', PATTERN);
+    const release = completion(harness);
+    const manual = harness.byLabel('Buka kunci dengan pola').props.onPress;
+    const operation = first === 'release' ? release(PATTERN) : manual();
+    harness.flush();
+    await (first === 'release' ? manual() : release(PATTERN));
+    await release(PATTERN);
+    assert.deepEqual(calls.pattern, [PATTERN], 'only one proof may reach the service while pending');
+    pending.resolve();
+    await operation;
+    await harness.settle();
+    await release(PATTERN);
+    await manual();
+    assert.deepEqual(calls.pattern, [PATTERN], 'a successful unlock cannot verify an old proof again');
+    harness.unmount();
+  }
+});
+
+test('obsolete release callbacks stay rejected after method switch, background, or unmount', async (t) => {
+  for (const reason of ['switch', 'background', 'unmount']) {
+    const { harness, calls } = unlockHarness(t);
+    await harness.mount();
+    await harness.press('Gunakan pola kunci');
+    const stale = completion(harness);
+    harness.patternChange('Pola buka kunci aplikasi', PATTERN);
+    if (reason === 'switch') await harness.press('Gunakan PIN 6 digit');
+    else if (reason === 'background') { harness.appState.emit('background'); harness.flush(); }
+    else harness.unmount();
+    await stale(PATTERN);
+    await harness.settle();
+    assert.deepEqual(calls.pattern, [], reason);
+    if (reason !== 'unmount') {
+      harness.appState.emit('active');
+      harness.flush();
+      await harness.press('Gunakan pola kunci');
+      await stale(PATTERN);
+      await harness.settle();
+      assert.deepEqual(calls.pattern, [], `${reason} must not revive a disposed grid callback`);
+    }
+    harness.unmount();
+  }
+});
+
+test('release checks live safety state before rendering can catch up, including cooldown and external busy', async (t) => {
+  const now = 1_900_000_000_000;
+  t.mock.method(Date, 'now', () => now);
+  for (const patch of [
+    { ready: false }, { enabled: false }, { locked: false }, { covered: true },
+    { patternEnabled: false }, { busy: true }, { retryAt: now + 30_000 }, { storageError: true },
+  ]) {
+    const { harness, state, calls } = unlockHarness(t);
+    await harness.mount();
+    await harness.press('Gunakan pola kunci');
+    const release = completion(harness);
+    Object.assign(state, patch);
+    await release(PATTERN);
+    harness.flush();
+    assert.deepEqual(calls.pattern, [], JSON.stringify(patch));
+    assert.equal(state.failedAttempts, 0);
+    harness.unmount();
+  }
+});
+
+test('unlock line visibility is explicit, while rejected and failed release proofs remain useful for retry', async (t) => {
+  for (const patternLinesVisible of [undefined, true, false]) {
+    const behavior = { state: { patternLinesVisible }, patternResult: false };
+    const { harness, state, calls } = unlockHarness(t, behavior);
+    await harness.mount();
+    await harness.press('Gunakan pola kunci');
+    assert.equal(harness.byLabel('Pola buka kunci aplikasi').props.showLines, patternLinesVisible !== false);
+    harness.patternChange('Pola buka kunci aplikasi', PATTERN);
+    await completion(harness)(PATTERN);
+    await harness.settle();
+    assert.deepEqual(calls.pattern, [PATTERN]);
+    assert.equal(state.failedAttempts, 1, 'only the authoritative service increments attempt count');
+    assert.equal(state.locked, true);
+    assert.equal(harness.byLabel('Pola buka kunci aplikasi').props.value.length, 0);
+    assert.ok(harness.textMatching(/Pola salah/));
+    behavior.patternResult = true;
+    state.error = null;
+    harness.patternChange('Pola buka kunci aplikasi', PATTERN);
+    await completion(harness)(PATTERN);
+    await harness.settle();
+    assert.deepEqual(calls.pattern, [PATTERN, PATTERN]);
+    assert.equal(state.locked, false);
+    harness.unmount();
+  }
 });

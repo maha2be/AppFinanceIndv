@@ -66,7 +66,9 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
   const actionLockRef = useRef(false);
   const unlockMethodRef = useRef<UnlockMethod>('pin');
   const foregroundRef = useRef(AppState.currentState == null || AppState.currentState === 'active');
+  const patternGenerationRef = useRef(0);
   unlockMethodRef.current = unlockMethod;
+  const patternGeneration = patternGenerationRef.current;
 
   const updatePin = useCallback((next: string) => {
     const clean = sanitizePinInput(next);
@@ -88,6 +90,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
   }, []);
 
   const clearPinFields = useCallback(() => {
+    patternGenerationRef.current += 1;
     pinRef.current = '';
     patternRef.current = [];
     setPin('');
@@ -99,6 +102,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      patternGenerationRef.current += 1;
       pinRef.current = '';
       patternRef.current = [];
     };
@@ -108,11 +112,8 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       foregroundRef.current = nextState === 'active';
       if (nextState === 'background' || nextState === 'inactive') {
-        pinRef.current = '';
-        patternRef.current = [];
-        setPin('');
-        setPattern([]);
-        setPatternDrawing(false);
+        clearPinFields();
+        unlockMethodRef.current = 'pin';
         setUnlockMethod('pin');
         setLocalError(null);
       }
@@ -120,11 +121,12 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [clearPinFields]);
 
   useEffect(() => {
     if (lockState.covered || !lockState.locked || !lockState.ready || lockState.storageError) {
       clearPinFields();
+      unlockMethodRef.current = 'pin';
       setUnlockMethod('pin');
       setLocalError(null);
     }
@@ -132,12 +134,11 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
 
   useEffect(() => {
     if (!lockState.patternEnabled && unlockMethod === 'pattern') {
-      patternRef.current = [];
-      setPattern([]);
-      setPatternDrawing(false);
+      clearPinFields();
+      unlockMethodRef.current = 'pin';
       setUnlockMethod('pin');
     }
-  }, [lockState.patternEnabled, unlockMethod]);
+  }, [lockState.patternEnabled, unlockMethod, clearPinFields]);
 
   useEffect(() => {
     let active = true;
@@ -233,28 +234,33 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
     }
   };
 
-  const handlePatternUnlock = async () => {
-    if (actionLockRef.current || isBusy || inCooldown || !lockState.patternEnabled) {
+  const handlePatternUnlock = async (completedPattern: readonly number[]) => {
+    const latest = getAppLockState();
+    if (!mountedRef.current || !foregroundRef.current || unlockMethodRef.current !== 'pattern' ||
+      actionLockRef.current || isBusy || latest.busy || latest.retryAt > Date.now() ||
+      !latest.ready || !latest.supported || !latest.enabled || !latest.locked || latest.covered ||
+      latest.storageError || !latest.patternEnabled) {
       return;
     }
-    const candidate = patternRef.current;
+    const candidate = [...completedPattern];
     if (!isValidLockPattern(candidate)) {
       setLocalError('Hubungkan minimal 4 titik untuk membuka kunci.');
       return;
     }
 
     actionLockRef.current = true;
+    const ticket = patternGenerationRef.current;
     setLocalError(null);
     try {
       const unlocked = await unlockWithPattern(candidate);
-      if (mountedRef.current) {
+      if (mountedRef.current && ticket === patternGenerationRef.current) {
         clearPinFields();
         if (!unlocked) {
           setNowMs(Date.now());
         }
       }
     } catch (err) {
-      if (mountedRef.current) {
+      if (mountedRef.current && ticket === patternGenerationRef.current) {
         clearPinFields();
         setNowMs(Date.now());
         setLocalError(
@@ -269,11 +275,12 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
   };
 
   const handleSwitchUnlockMethod = (nextMethod: UnlockMethod) => {
-    if (isBusy || inCooldown) {
+    if (actionLockRef.current || isBusy || inCooldown) {
       return;
     }
     clearPinFields();
     setLocalError(null);
+    unlockMethodRef.current = nextMethod;
     setUnlockMethod(nextMethod);
   };
 
@@ -490,7 +497,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
             </Text>
             <Text style={styles.subtitle}>
               {unlockMethod === 'pattern' && lockState.patternEnabled
-                ? 'Hubungkan minimal 4 titik pola untuk membuka catatan keuanganmu.'
+                ? 'Connect at least four dots, then lift your finger to unlock automatically.'
                 : 'Masukkan PIN 6 digit untuk membuka catatan keuanganmu.'}
             </Text>
 
@@ -513,6 +520,11 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
             {unlockMethod === 'pattern' && lockState.patternEnabled ? (
               <PatternInput
                 value={pattern}
+                showLines={lockState.patternLinesVisible !== false}
+                onComplete={(candidate) => {
+                  if (patternGeneration !== patternGenerationRef.current) return;
+                  void handlePatternUnlock(candidate);
+                }}
                 onDrawingChange={handleUnlockPatternDrawingChange}
                 onChange={(next) => {
                   if (localError) {
@@ -555,7 +567,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
               {unlockMethod === 'pattern' && lockState.patternEnabled ? (
                 <Button
                   title="Buka kunci dengan pola"
-                  onPress={handlePatternUnlock}
+                  onPress={() => { void handlePatternUnlock(patternRef.current); }}
                   loading={lockState.busy && !signingOut && !retryingBoot}
                   disabled={isBusy || inCooldown || !isValidLockPattern(pattern)}
                   size="lg"

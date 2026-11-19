@@ -498,7 +498,7 @@ test('tap mode UI is absent and only the drag board selects nodes', () => {
   );
 });
 
-test('the grid exposes no submit control or auto-submit callback', () => {
+test('the default grid exposes no submit control or completion callback unless opted in', () => {
   const grid = createPatternInput();
   const all = elements(grid.renderer.tree);
 
@@ -626,5 +626,108 @@ test('blank-space and disabled touches never suspend parent scrolling', () => {
   assert.equal(grid.board().props.onStartShouldSetResponderCapture({ nativeEvent: { locationX: 40, locationY: 40 } }), false);
   grid.draw(40, 40);
   assert.deepEqual(drawingChanges, []);
+  grid.renderer.unmount();
+});
+
+test('opt-in completion fires once on release, snapshots the pattern, and accepts short gestures', () => {
+  const grid = createPatternInput();
+  const completed = [];
+  grid.renderer.update({ onComplete: (pattern) => completed.push(pattern) });
+  grid.draw(40, 40);
+  grid.move(200, 40);
+  grid.move(200, 120);
+  assert.equal(completed.length, 0, 'node updates must not complete the gesture');
+  grid.release();
+  assert.equal(completed.length, 1, 'a node-started gesture must complete exactly once on release');
+  assert.deepEqual(Array.from(completed[0]), [0, 1, 2, 5]);
+  completed[0].push(8);
+  assert.deepEqual(grid.value(), [0, 1, 2, 5], 'completion must not expose the live draft array');
+  grid.release();
+  grid.move(200, 200);
+  assert.equal(completed.length, 1, 'repeated release and post-release moves must not complete again');
+  grid.draw(200, 200);
+  grid.release();
+  assert.deepEqual(Array.from(completed[1]), [8], 'the consumer, not the grid, validates minimum length');
+  assert.deepEqual(Array.from(completed[0]), [0, 1, 2, 5, 8], 'a later gesture cannot mutate an earlier snapshot');
+  grid.renderer.unmount();
+});
+
+test('interrupted gestures never invoke opt-in completion, including stale release after unmount', () => {
+  for (const reason of ['terminate', 'clear', 'disable', 'empty', 'unmount']) {
+    const grid = createPatternInput();
+    const completed = [];
+    grid.renderer.update({ onComplete: (pattern) => completed.push(Array.from(pattern)) });
+    grid.draw(40, 40);
+    grid.move(200, 40);
+    const release = grid.board().props.onResponderRelease;
+    if (reason === 'terminate') grid.terminate();
+    else if (reason === 'clear') grid.clear();
+    else if (reason === 'disable') grid.renderer.update({ disabled: true });
+    else if (reason === 'empty') grid.renderer.update({ value: [] });
+    else grid.renderer.unmount();
+    release();
+    release();
+    assert.deepEqual(completed, [], reason);
+    grid.renderer.unmount();
+  }
+});
+
+test('release never completes if restoring parent scrolling synchronously unmounts the grid', () => {
+  const grid = createPatternInput();
+  const completed = [];
+  const drawingChanges = [];
+  grid.renderer.update({
+    onComplete: (pattern) => completed.push(Array.from(pattern)),
+    onDrawingChange: (drawing) => {
+      drawingChanges.push(drawing);
+      if (!drawing) grid.renderer.unmount();
+    },
+  });
+  grid.draw(40, 40);
+  grid.move(200, 40);
+  grid.move(200, 120);
+  assert.deepEqual(grid.value(), [0, 1, 2, 5]);
+  const release = grid.board().props.onResponderRelease;
+  release();
+  release();
+  assert.deepEqual(drawingChanges, [true, false], 'parent scrolling must be restored exactly once');
+  assert.deepEqual(completed, [], 'unmount during the drawing callback must suppress completion');
+});
+
+test('release without a node-started gesture never completes even with a previous draft', () => {
+  const grid = createPatternInput();
+  const completed = [];
+  grid.renderer.update({ value: [0, 1, 2, 5], onComplete: (pattern) => completed.push(Array.from(pattern)) });
+  grid.release();
+  grid.draw(10, 10);
+  grid.move(200, 120);
+  grid.release();
+  grid.renderer.update({ disabled: true });
+  grid.draw(40, 40);
+  grid.release();
+  assert.deepEqual(completed, []);
+  grid.renderer.unmount();
+});
+
+test('showLines hides only connecting segments and never changes nodes or hit selection', () => {
+  const grid = createPatternInput();
+  grid.draw(40, 40);
+  grid.move(200, 40);
+  grid.move(200, 120);
+  const segments = () => elements(grid.renderer.tree).filter((element) => /^seg-/.test(element.props.key || ''));
+  const nodes = () => elements(grid.renderer.tree).filter((element) => /^node-/.test(element.props.key || ''))
+    .map((element) => ({ key: element.props.key, style: Object.assign({}, ...element.props.style.filter(Boolean)) }));
+  assert.equal(segments().length, 3, 'connecting lines default to visible');
+  const before = nodes();
+  const changeCount = grid.changes.length;
+  grid.renderer.update({ showLines: false });
+  assert.equal(segments().length, 0);
+  assert.equal(nodes().length, 9);
+  assert.deepEqual(nodes(), before, 'selected nodes and geometry must stay unchanged');
+  assert.equal(grid.changes.length, changeCount);
+  grid.move(200, 200);
+  assert.deepEqual(grid.value(), [0, 1, 2, 5, 8], 'hidden lines must not alter hit selection');
+  grid.renderer.update({ showLines: true });
+  assert.equal(segments().length, 4);
   grid.renderer.unmount();
 });

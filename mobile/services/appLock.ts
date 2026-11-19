@@ -16,6 +16,7 @@ interface LockRecord {
   failures: number;
   retryAt: number;
   pattern?: { secret: string; verifier: string };
+  patternLinesVisible?: boolean;
 }
 
 export interface AppLockState {
@@ -23,6 +24,7 @@ export interface AppLockState {
   enabled: boolean;
   biometricsEnabled: boolean;
   patternEnabled: boolean;
+  patternLinesVisible: boolean;
   locked: boolean;
   covered: boolean;
   busy: boolean;
@@ -34,7 +36,7 @@ export interface AppLockState {
 }
 
 let state: AppLockState = {
-  ready: false, enabled: false, biometricsEnabled: false, patternEnabled: false, locked: true,
+  ready: false, enabled: false, biometricsEnabled: false, patternEnabled: false, patternLinesVisible: true, locked: true,
   covered: false, busy: false, error: null, storageError: false, retryAt: 0, failedAttempts: 0,
   supported: Platform.OS !== 'web',
 };
@@ -62,6 +64,7 @@ function fields(value: LockRecord | null): Partial<AppLockState> {
   return {
     enabled: value !== null, biometricsEnabled: value?.biometrics ?? false,
     patternEnabled: value?.pattern !== undefined,
+    patternLinesVisible: value?.patternLinesVisible ?? true,
     failedAttempts: value?.failures ?? 0, retryAt: value?.retryAt ?? 0,
   };
 }
@@ -77,6 +80,7 @@ function parseRecord(raw: string): LockRecord {
       !Number.isSafeInteger(value.failures) || value.failures < 0 || value.failures > 5 ||
       !Number.isSafeInteger(value.retryAt) || value.retryAt < 0 ||
       (value.failures === 5 && value.retryAt === 0) ||
+      (value.patternLinesVisible !== undefined && typeof value.patternLinesVisible !== 'boolean') ||
       (value.pattern !== undefined && (value.pattern === null ||
         typeof value.pattern.secret !== 'string' || !/^[0-9a-f]{64}$/.test(value.pattern.secret) ||
         typeof value.pattern.verifier !== 'string' || !/^[0-9a-f]{64}$/.test(value.pattern.verifier)))) {
@@ -354,6 +358,17 @@ export async function setAppLockPattern(currentPin: string,
     }
     active(ticket);
     await persistSetting(next, ticket);
+  });
+}
+
+/** Display preferences never change either unlock verifier. */
+export async function setAppLockPatternLines(currentPin: string, visible: boolean): Promise<void> {
+  return exclusive(async (ticket) => {
+    if (typeof visible !== 'boolean') throw new Error('Pattern line visibility must be a boolean.');
+    await requirePin(currentPin, ticket);
+    if (!record!.pattern) throw new Error('Enable a lock pattern before changing its line visibility.');
+    active(ticket);
+    await persistSetting({ ...record!, patternLinesVisible: visible }, ticket);
   });
 }
 

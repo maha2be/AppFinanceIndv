@@ -7,7 +7,7 @@ const { createHarness, loadTsModule, mobileRoot, tokenProxy } = require('./suppo
 const PIN = '246813';
 const NEXT_PIN = '135790';
 const mutations = ['enableAppLock', 'changeAppLockPin', 'setAppLockBiometrics',
-  'setAppLockPattern', 'disableAppLock'];
+  'setAppLockPattern', 'setAppLockPatternLines', 'disableAppLock'];
 
 function deferred() {
   let resolve;
@@ -19,6 +19,7 @@ function managementHarness(t, overrides = {}, behavior = {}) {
   const state = {
     ready: true, supported: true, enabled: true, locked: false, covered: false,
     busy: false, patternEnabled: false, biometricsEnabled: false, error: null,
+    patternLinesVisible: true,
     retryAt: 0, failedAttempts: 0, storageError: false, ...overrides,
   };
   const calls = Object.fromEntries(mutations.map((name) => [name, []]));
@@ -53,6 +54,7 @@ function managementHarness(t, overrides = {}, behavior = {}) {
       }
       if (name === 'setAppLockBiometrics') state.biometricsEnabled = args[1];
       if (name === 'setAppLockPattern') state.patternEnabled = args[1] !== null;
+      if (name === 'setAppLockPatternLines') state.patternLinesVisible = args[1];
     };
   }
   const alertService = behavior.realAlerts
@@ -520,7 +522,7 @@ test('cooldown abandons drafts, disables every mutation, shows seconds, and reje
   assertOverview(harness);
   assert.ok(harness.textMatching(/Coba lagi dalam/));
   assert.ok(harness.texts().join(' ').match(/30\s+detik/));
-  for (const label of ['Ganti PIN', 'Ubah pola kunci', 'Hapus pola kunci', 'Sidik jari / biometrik', 'Nonaktifkan kunci aplikasi']) {
+  for (const label of ['Ganti PIN', 'Ubah pola kunci', 'Pattern line visibility', 'Hapus pola kunci', 'Sidik jari / biometrik', 'Nonaktifkan kunci aplikasi']) {
     assert.equal(harness.byLabel(label).props.disabled, true, `${label} must respect cooldown`);
   }
   stale();
@@ -540,7 +542,7 @@ test('external busy state prevents opening every mutation without collecting cre
   const { harness, calls } = managementHarness(t, { busy: true, patternEnabled: true, biometricsEnabled: true });
   await harness.mount();
   assertOverview(harness);
-  for (const label of ['Ganti PIN', 'Ubah pola kunci', 'Hapus pola kunci', 'Sidik jari / biometrik', 'Nonaktifkan kunci aplikasi']) {
+  for (const label of ['Ganti PIN', 'Ubah pola kunci', 'Pattern line visibility', 'Hapus pola kunci', 'Sidik jari / biometrik', 'Nonaktifkan kunci aplikasi']) {
     const action = harness.byLabel(label);
     assert.equal(action.props.disabled, true);
     action.props.onPress();
@@ -754,6 +756,81 @@ test('press feedback preserves opacity but omits scaling when reduced motion is 
     await openChange(harness);
     assertFeedback('Simpan PIN baru');
     assert.equal(mutationCount(calls), 0, 'evaluating press styles must not invoke actions');
+    harness.unmount();
+  }
+});
+
+test('line visibility exists only for enabled patterns and saves one explicit PIN-verified choice', async (t) => {
+  const absent = managementHarness(t);
+  await absent.harness.mount();
+  assert.equal(absent.harness.byLabel('Pattern line visibility'), undefined);
+  const { harness, calls, state } = managementHarness(t, { patternEnabled: true });
+  await harness.mount();
+  await harness.press('Pattern line visibility');
+  assert.deepEqual(harness.allByType('Input').map((field) => field.props.accessibilityLabel), ['PIN saat ini']);
+  assert.equal(harness.allByType('PatternInput').length, 0);
+  assert.ok(harness.byLabel('Show lines'));
+  await harness.press('Hide lines');
+  for (const invalid of ['', '24681', '２４６８１３']) {
+    harness.change('PIN saat ini', invalid);
+    await harness.press('Save');
+    assert.equal(mutationCount(calls), 0);
+    assert.ok(harness.textMatching(/Enter your current six-digit PIN to change pattern line visibility/));
+  }
+  harness.change('PIN saat ini', '2a4 6-8.1🙂3９7');
+  await harness.press('Save');
+  assert.deepEqual(calls.setAppLockPatternLines, [[PIN, false]]);
+  assert.equal(mutationCount(calls), 1);
+  assert.equal(state.patternLinesVisible, false);
+  assert.equal(state.enabled, true);
+  assert.equal(state.patternEnabled, true);
+  assertOverview(harness);
+});
+
+test('line visibility wrong-PIN failure stays useful, clears credentials, and retries without changing other unlock methods', async (t) => {
+  const { harness, calls, state } = managementHarness(t, { patternEnabled: true, biometricsEnabled: true });
+  await harness.mount();
+  await harness.press('Pattern line visibility');
+  await harness.press('Hide lines');
+  harness.change('PIN saat ini', '111111');
+  await harness.press('Save');
+  assert.deepEqual(calls.setAppLockPatternLines, [['111111', false]]);
+  assert.equal(state.patternLinesVisible, true);
+  assert.equal(calls.alerts.length, 0);
+  assert.ok(harness.textMatching(/PIN saat ini salah/));
+  assert.equal(harness.byLabel('PIN saat ini').props.value, '');
+  assert.ok(harness.byLabel('Save'));
+  harness.change('PIN saat ini', PIN);
+  await harness.press('Save');
+  assert.deepEqual(calls.setAppLockPatternLines, [['111111', false], [PIN, false]]);
+  assert.equal(mutationCount(calls), 2);
+  assert.equal(state.biometricsEnabled, true);
+  assert.equal(state.patternEnabled, true);
+  assert.equal(state.enabled, true);
+  assertOverview(harness);
+});
+
+test('cancelling, blurring, or backgrounding line visibility clears its PIN and draft choice without mutation', async (t) => {
+  for (const reason of ['cancel', 'blur', 'background']) {
+    const context = managementHarness(t, { patternEnabled: true });
+    const { harness, calls } = context;
+    await harness.mount();
+    await harness.press('Pattern line visibility');
+    await harness.press('Hide lines');
+    harness.change('PIN saat ini', PIN);
+    const staleSave = harness.byLabel('Save').props.onPress;
+    if (reason === 'cancel') await harness.press('Batal');
+    else await invalidate(context, reason);
+    await staleSave();
+    harness.flush();
+    await harness.settle();
+    assert.equal(mutationCount(calls), 0, reason);
+    assertOverview(harness);
+    await harness.press('Pattern line visibility');
+    assert.equal(harness.byLabel('PIN saat ini').props.value, '');
+    harness.change('PIN saat ini', PIN);
+    await harness.press('Save');
+    assert.deepEqual(calls.setAppLockPatternLines, [[PIN, true]], 'reopening must discard the unpersisted hidden choice');
     harness.unmount();
   }
 });
