@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from finance_core.db.transactions import Transaction
 from finance_core.reports.aggregator import (
     CategoryTotal,
+    DailyFlowPoint,
     ReportSummary,
+    aggregate_daily_series,
     aggregate_transactions,
 )
 
@@ -93,3 +97,61 @@ def test_aggregate_transactions_returns_zero_summary_for_empty_transactions() ->
         top_expense_categories=[],
         investment_percentage=0.0,
     )
+
+
+def test_aggregate_daily_series_builds_contiguous_running_net_curve() -> None:
+    transactions = [
+        Transaction(
+            id=1,
+            user_id=1,
+            type="income",
+            category_id=None,
+            amount=1_000_000,
+            note=None,
+            asset_name=None,
+            transaction_date="2026-05-01",
+        ),
+        Transaction(
+            id=2,
+            user_id=1,
+            type="expense",
+            category_id=None,
+            amount=250_000,
+            note=None,
+            asset_name=None,
+            transaction_date="2026-05-03",
+        ),
+        Transaction(
+            id=3,
+            user_id=1,
+            type="investment",
+            category_id=None,
+            amount=150_000,
+            note=None,
+            asset_name="BTC",
+            transaction_date="2026-05-03",
+        ),
+        Transaction(
+            id=4,
+            user_id=1,
+            type="expense",
+            category_id=None,
+            amount=999_999,
+            note="outside range",
+            asset_name=None,
+            transaction_date="2026-05-04",
+        ),
+    ]
+
+    series = aggregate_daily_series(
+        transactions,
+        start_date=date(2026, 5, 1),
+        end_date=date(2026, 5, 3),
+    )
+
+    assert series == [
+        DailyFlowPoint("2026-05-01", 1_000_000, 0, 0, 1_000_000, 1_000_000),
+        DailyFlowPoint("2026-05-02", 0, 0, 0, 0, 1_000_000),
+        DailyFlowPoint("2026-05-03", 0, 250_000, 150_000, -400_000, 600_000),
+    ]
+    assert aggregate_daily_series([], start_date=date(2026, 5, 5), end_date=date(2026, 5, 1)) == []

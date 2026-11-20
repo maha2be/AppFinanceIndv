@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -12,6 +12,7 @@ from finance_core.db.transactions import list_transactions_in_range
 from finance_core.db.users import AppUser
 from finance_core.reports.aggregator import (
     aggregate_by_category,
+    aggregate_daily_series,
     aggregate_investments,
     aggregate_transactions,
 )
@@ -27,6 +28,7 @@ from ..auth.dependencies import get_current_user, get_db
 from ..models.schemas import (
     CategoryBreakdownResponse,
     CategoryTotalItem,
+    DailyFlowPointItem,
     InvestmentReportResponse,
     PeriodReportResponse,
 )
@@ -54,6 +56,8 @@ def _build_period_report(
     user: AppUser,
     date_range: DateRange,
     title: str,
+    *,
+    timeline_range: DateRange | None = None,
 ) -> PeriodReportResponse:
     """Aggregate one date range into a period report."""
 
@@ -66,6 +70,23 @@ def _build_period_report(
         end_date=end,
     )
     summary = aggregate_transactions(transactions)
+
+    series_range = timeline_range or date_range
+    series_transactions = (
+        transactions
+        if series_range == date_range
+        else list_transactions_in_range(
+            db,
+            user_id=user.id,
+            start_date=series_range.start_date.isoformat(),
+            end_date=series_range.end_date.isoformat(),
+        )
+    )
+    timeline = aggregate_daily_series(
+        series_transactions,
+        start_date=series_range.start_date,
+        end_date=series_range.end_date,
+    )
 
     return PeriodReportResponse(
         title=title,
@@ -80,6 +101,17 @@ def _build_period_report(
         top_expense_categories=[
             CategoryTotalItem(name=item.name, amount=item.amount, percentage=item.percentage)
             for item in summary.top_expense_categories
+        ],
+        timeline=[
+            DailyFlowPointItem(
+                date=point.date,
+                income=point.income,
+                expense=point.expense,
+                investment=point.investment,
+                net=point.net,
+                cumulative_net=point.cumulative_net,
+            )
+            for point in timeline
         ],
     )
 
@@ -97,12 +129,13 @@ def get_daily_report(
     current_user: AppUser = Depends(get_current_user),
     db: sqlite3.Connection = Depends(get_db),
 ) -> PeriodReportResponse:
-    """Generate a daily financial summary."""
+    """Generate a daily financial summary with a 7-day stability curve."""
 
     reference = target_date or today_in(current_user.timezone)
     date_range = today_range(reference)
+    curve_range = DateRange(start_date=reference - timedelta(days=6), end_date=reference)
     title = f"Laporan Harian ({reference.day} {_MONTH_NAMES_ID[reference.month - 1]} {reference.year})"
-    return _build_period_report(db, current_user, date_range, title)
+    return _build_period_report(db, current_user, date_range, title, timeline_range=curve_range)
 
 
 @router.get("/weekly", response_model=PeriodReportResponse)

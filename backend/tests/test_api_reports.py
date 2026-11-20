@@ -55,6 +55,9 @@ def test_daily_report(populated_client):
     assert data["total_investment"] == 500000
     assert data["net"] == 4400000
     assert len(data["top_expense_categories"]) >= 1
+    assert len(data["timeline"]) == 7
+    assert data["timeline"][-1]["date"] == "2026-05-30"
+    assert data["timeline"][-1]["cumulative_net"] == 4400000
 
 
 def test_monthly_report(populated_client):
@@ -63,6 +66,10 @@ def test_monthly_report(populated_client):
     data = res.json()
     assert data["total_income"] == 5000000
     assert data["net"] == 4400000
+    assert len(data["timeline"]) == 31
+    assert data["timeline"][0]["date"] == "2026-05-01"
+    assert data["timeline"][-1]["date"] == "2026-05-31"
+    assert data["timeline"][-1]["cumulative_net"] == 4400000
 
 
 def test_category_breakdown(populated_client):

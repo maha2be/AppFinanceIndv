@@ -271,6 +271,15 @@ class CategoryTotalItem(BaseModel):
     percentage: float = 0.0
 
 
+class DailyFlowPointItem(BaseModel):
+    date: str
+    income: int
+    expense: int
+    investment: int
+    net: int
+    cumulative_net: int
+
+
 class PeriodReportResponse(BaseModel):
     title: str
     start_date: str
@@ -282,6 +291,7 @@ class PeriodReportResponse(BaseModel):
     average_expense: int
     investment_percentage: float
     top_expense_categories: list[CategoryTotalItem]
+    timeline: list[DailyFlowPointItem] = []
 
 
 class CategoryBreakdownResponse(BaseModel):
