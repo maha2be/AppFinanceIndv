@@ -998,7 +998,7 @@ def test_version_7_database_upgrades_to_8_and_remains_idempotent(tmp_path) -> No
         connection.commit()
 
         connection.execute("DROP TABLE transaction_audit")
-        connection.execute("DELETE FROM schema_migrations WHERE version = 8")
+        connection.execute("DELETE FROM schema_migrations WHERE version >= 8")
         connection.commit()
         assert current_version(connection) == 7
     finally:
@@ -1006,20 +1006,20 @@ def test_version_7_database_upgrades_to_8_and_remains_idempotent(tmp_path) -> No
 
     connection = connect(path)
     try:
-        assert run_migrations(connection) == 8
-        assert current_version(connection) == 8
+        assert run_migrations(connection) == SCHEMA_VERSION
+        assert current_version(connection) == SCHEMA_VERSION
         assert get_transaction_by_id(
             connection, user_id=user.id, transaction_id=transaction.id
         ) is not None
 
-        assert run_migrations(connection) == 8
+        assert run_migrations(connection) == SCHEMA_VERSION
         versions = [
             row[0]
             for row in connection.execute(
                 "SELECT version FROM schema_migrations ORDER BY version"
             ).fetchall()
         ]
-        assert versions == list(range(1, 9))
+        assert versions == list(range(1, SCHEMA_VERSION + 1))
 
         audit_table = connection.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transaction_audit'"

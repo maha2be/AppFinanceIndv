@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -29,6 +32,7 @@ class AppUser:
     token_version: int = 0
     created_at: str | None = None
     google_sub: str | None = None
+    avatar_url: str | None = None
 
     @property
     def telegram_linked(self) -> bool:
@@ -53,10 +57,18 @@ class AppUser:
 User = AppUser
 
 GOOGLE_SUB_MAX_LENGTH = 255
+FIRST_NAME_MAX_LENGTH = 80
+AVATAR_MAX_BYTES = 300_000
+AVATAR_DATA_URI_MAX_LENGTH = 410_000
+
+_AVATAR_DATA_URI_RE = re.compile(
+    r"^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$"
+)
+_UNSET = object()
 
 _USER_COLUMNS = (
     "id, email, password_hash, first_name, username, "
-    "telegram_user_id, timezone, currency, token_version, created_at, google_sub"
+    "telegram_user_id, timezone, currency, token_version, created_at, google_sub, avatar_url"
 )
 
 
@@ -74,6 +86,7 @@ def _row_to_user(row: sqlite3.Row) -> AppUser:
         token_version=row["token_version"] if "token_version" in keys else 0,
         created_at=row["created_at"] if "created_at" in keys else None,
         google_sub=row["google_sub"] if "google_sub" in keys else None,
+        avatar_url=row["avatar_url"] if "avatar_url" in keys else None,
     )
 
 
@@ -243,6 +256,37 @@ def get_or_create_user(
     return created_user
 
 
+def validate_first_name(first_name: str) -> str:
+    cleaned = first_name.strip()
+    if not cleaned:
+        raise ValueError("Nama tidak boleh kosong.")
+    if len(cleaned) > FIRST_NAME_MAX_LENGTH:
+        raise ValueError("Nama maksimal 80 karakter.")
+    return cleaned
+
+
+def validate_avatar_data_uri(avatar_url: str) -> str:
+    if len(avatar_url) > AVATAR_DATA_URI_MAX_LENGTH:
+        raise ValueError("Ukuran foto profil terlalu besar.")
+    match = _AVATAR_DATA_URI_RE.fullmatch(avatar_url)
+    if match is None:
+        raise ValueError("Format foto profil harus JPEG, PNG, atau WEBP.")
+    kind, encoded = match.groups()
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("Data foto profil tidak valid.") from None
+    if not raw or len(raw) > AVATAR_MAX_BYTES:
+        raise ValueError("Ukuran foto profil terlalu besar.")
+    if kind == "jpeg" and not raw.startswith(b"\xff\xd8\xff"):
+        raise ValueError("File gambar JPEG tidak valid.")
+    if kind == "png" and not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("File gambar PNG tidak valid.")
+    if kind == "webp" and not (len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"):
+        raise ValueError("File gambar WEBP tidak valid.")
+    return avatar_url
+
+
 def update_user_profile(
     connection: sqlite3.Connection,
     *,
@@ -250,6 +294,7 @@ def update_user_profile(
     first_name: str | None = None,
     timezone: str | None = None,
     currency: str | None = None,
+    avatar_url: str | None | object = _UNSET,
 ) -> AppUser | None:
     """Update the editable profile fields of one user."""
 
@@ -257,16 +302,29 @@ def update_user_profile(
     if current is None:
         return None
 
+    next_first_name = (
+        validate_first_name(first_name) if first_name is not None else current.first_name
+    )
+    if avatar_url is _UNSET:
+        next_avatar = current.avatar_url
+    elif avatar_url is None:
+        next_avatar = None
+    else:
+        if not isinstance(avatar_url, str):
+            raise ValueError("Format foto profil tidak valid.")
+        next_avatar = validate_avatar_data_uri(avatar_url)
+
     connection.execute(
         """
         UPDATE users
-        SET first_name = ?, timezone = ?, currency = ?
+        SET first_name = ?, timezone = ?, currency = ?, avatar_url = ?
         WHERE id = ?
         """,
         (
-            first_name if first_name is not None else current.first_name,
+            next_first_name,
             timezone if timezone is not None else current.timezone,
             currency if currency is not None else current.currency,
+            next_avatar,
             user_id,
         ),
     )

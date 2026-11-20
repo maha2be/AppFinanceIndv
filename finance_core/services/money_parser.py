@@ -11,7 +11,7 @@ class MoneyParseError(ValueError):
 
 
 _AMOUNT_PATTERN = re.compile(
-    r"(?i)(?:rp\s*)?(?P<number>\d+(?:[.,]\d+)*)(?:\s*(?P<suffix>k|rb|ribu|jt|juta)\b)?"
+    r"(?i)(?:\brp\.?\s*|\b)(?P<number>\d+(?:[.,]\d+)*)(?:\s*(?P<suffix>k|rb|ribu|jt|juta)\b)?"
 )
 
 _SUFFIX_MULTIPLIERS: dict[str, int] = {

@@ -77,13 +77,13 @@ def test_postgres_schema_reaches_current_version(postgres_url):
 
     connection = connect_url(postgres_url)
     try:
-        assert run_migrations(connection) == 8
-        assert run_migrations(connection) == 8
-        assert current_version(connection) == 8
+        assert run_migrations(connection) == 9
+        assert run_migrations(connection) == 9
+        assert current_version(connection) == 9
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
         assert connection.execute(
             "SELECT relrowsecurity FROM pg_class WHERE oid = 'transaction_audit'::regclass"
         ).fetchone()[0] is True
@@ -148,7 +148,6 @@ def test_postgres_upgrade_from_seven_preserves_live_transactions(postgres_url, m
         list_transaction_history,
         update_transaction,
     )
-    from finance_core.db.users import create_mobile_user
 
     connection = connect_url(postgres_url)
     try:
@@ -160,20 +159,25 @@ def test_postgres_upgrade_from_seven_preserves_live_transactions(postgres_url, m
                  postgres_schema._POSTGRES_MIGRATIONS.items() if version <= 7},
             )
             assert run_migrations(connection) == 7
-        owner = create_mobile_user(connection, email="upgrade@example.com", password_hash="unused")
+        owner_id = int(
+            connection.execute(
+                "INSERT INTO users (email, password_hash) VALUES (?, ?) RETURNING id",
+                ("upgrade@example.com", "unused"),
+            ).fetchone()[0]
+        )
         existing = create_transaction(
-            connection, user_id=owner.id, type="expense", category_id=None, amount=100,
+            connection, user_id=owner_id, type="expense", category_id=None, amount=100,
             note="Before upgrade", asset_name=None, transaction_date="2026-11-09",
         )
         connection.commit()
 
-        assert run_migrations(connection) == 8
-        assert run_migrations(connection) == current_version(connection) == 8
-        assert list_transaction_history(connection, user_id=owner.id) == []
+        assert run_migrations(connection) == 9
+        assert run_migrations(connection) == current_version(connection) == 9
+        assert list_transaction_history(connection, user_id=owner_id) == []
         update_transaction(
-            connection, user_id=owner.id, transaction_id=existing.id, amount=200, source="api",
+            connection, user_id=owner_id, transaction_id=existing.id, amount=200, source="api",
         )
-        history = list_transaction_history(connection, user_id=owner.id)
+        history = list_transaction_history(connection, user_id=owner_id)
         assert history[0]["before"]["note"] == "Before upgrade"
         assert history[0]["after"]["amount"] == 200
     finally:

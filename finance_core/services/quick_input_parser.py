@@ -28,7 +28,7 @@ class QuickInputResult:
 
 
 _AMOUNT_TOKEN_PATTERN = re.compile(
-    r"(?i)(?:rp\s*)?\d+(?:[.,]\d+)*(?:\s*(?:k|rb|ribu|jt|juta))?"
+    r"(?i)(?:\brp\.?\s*|\b)\d+(?:[.,]\d+)*(?:\s*(?:k|rb|ribu|jt|juta)\b)?"
 )
 
 _ERROR_RESULT_DEFAULTS = {
@@ -129,6 +129,10 @@ def _remove_asset_words(text: str, asset_name: str | None) -> str:
     asset_aliases = {
         "BTC": ["btc", "bitcoin"],
         "ETH": ["eth", "ethereum"],
+        "XRP": ["xrp", "ripple"],
+        "SOL": ["sol", "solana"],
+        "ADA": ["ada", "cardano"],
+        "DOGE": ["doge", "dogecoin"],
         "Emas": ["emas", "gold", "antam"],
     }.get(asset_name, [asset_name])
 

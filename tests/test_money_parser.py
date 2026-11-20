@@ -21,6 +21,9 @@ from finance_core.services.money_parser import MoneyParseError, parse_money
         ("35000 kopi sore", 35000),
         ("35000 ribuan cerita", 35000),
         ("35k kopi sore", 35000),
+        ("xrp 50000", 50000),
+        ("crypto xrp 100rb", 100000),
+        ("Rp. 25.000", 25000),
     ],
 )
 def test_parse_money_supports_indonesian_amount_formats(

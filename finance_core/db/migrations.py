@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 from .postgres_schema import run_postgres_migrations
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def _create_core_tables(connection: sqlite3.Connection) -> None:
@@ -415,6 +415,12 @@ def _migration_8(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_9(connection: sqlite3.Connection) -> None:
+    """Store an optional compact profile avatar data URI on the user record."""
+
+    _add_column_if_missing(connection, "users", "avatar_url", "TEXT")
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migration_1,
     2: _migration_2,
@@ -424,6 +430,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     6: _migration_6,
     7: _migration_7,
     8: _migration_8,
+    9: _migration_9,
 }
 
 

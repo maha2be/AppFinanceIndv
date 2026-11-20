@@ -40,6 +40,7 @@ TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "token_version",
             "created_at",
             "google_sub",
+            "avatar_url",
         ),
     ),
     ("categories", ("id", "user_id", "type", "name", "aliases", "is_default")),

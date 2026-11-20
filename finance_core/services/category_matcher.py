@@ -25,11 +25,62 @@ _INVESTMENT_ASSET_ALIASES: dict[str, str] = {
     "bitcoin": "BTC",
     "eth": "ETH",
     "ethereum": "ETH",
+    "xrp": "XRP",
+    "ripple": "XRP",
+    "sol": "SOL",
+    "solana": "SOL",
+    "bnb": "BNB",
+    "usdt": "USDT",
+    "usdc": "USDC",
+    "ada": "ADA",
+    "cardano": "ADA",
+    "doge": "DOGE",
+    "dogecoin": "DOGE",
+    "sui": "SUI",
+    "ton": "TON",
+    "trx": "TRX",
+    "avax": "AVAX",
+    "link": "LINK",
+    "dot": "DOT",
+    "matic": "MATIC",
+    "pol": "POL",
+    "ltc": "LTC",
+    "xlm": "XLM",
+    "shib": "SHIB",
+    "pepe": "PEPE",
     "bbca": "BBCA",
     "bmri": "BMRI",
     "emas": "Emas",
     "gold": "Emas",
     "antam": "Emas",
+}
+
+_EXTRA_CATEGORY_ALIASES: dict[tuple[TransactionType, str], tuple[str, ...]] = {
+    (TransactionType.INVESTMENT, "Crypto"): (
+        "xrp",
+        "ripple",
+        "sol",
+        "solana",
+        "bnb",
+        "usdt",
+        "usdc",
+        "ada",
+        "cardano",
+        "doge",
+        "dogecoin",
+        "sui",
+        "ton",
+        "trx",
+        "avax",
+        "link",
+        "dot",
+        "matic",
+        "pol",
+        "ltc",
+        "xlm",
+        "shib",
+        "pepe",
+    ),
 }
 
 
@@ -69,17 +120,22 @@ def match_category(
     best_score = 0
 
     for transaction_type, category_name, aliases in DEFAULT_CATEGORIES:
-        for alias in _alias_values(aliases):
-            score = _alias_score(normalized_text, tokens, alias)
-            if score > best_score:
-                best_score = score
-                best_match = CategoryMatch(
-                    transaction_type.value,
-                    category_name,
-                    asset_name=_detect_asset(transaction_type, normalized_text),
-                    confidence=1.0,
-                    needs_review=False,
-                )
+        category_aliases = _alias_values(aliases)
+        extra = _EXTRA_CATEGORY_ALIASES.get((transaction_type, category_name), ())
+        if extra:
+            category_aliases.extend(extra)
+        total_score = sum(
+            _alias_score(normalized_text, tokens, alias) for alias in category_aliases
+        )
+        if total_score > best_score:
+            best_score = total_score
+            best_match = CategoryMatch(
+                transaction_type.value,
+                category_name,
+                asset_name=_detect_asset(transaction_type, normalized_text),
+                confidence=1.0,
+                needs_review=False,
+            )
 
     if best_match is not None:
         return best_match

@@ -94,12 +94,44 @@ class UserResponse(BaseModel):
     id: int
     email: Optional[str] = None
     first_name: Optional[str] = None
+    avatar_url: Optional[str] = None
     timezone: str = "Asia/Jakarta"
     currency: str = "IDR"
     created_at: Optional[str] = None
     telegram_linked: bool = False
     google_linked: bool = False
     has_password: bool = False
+
+
+class UpdateProfileRequest(BaseModel):
+    first_name: Optional[str] = Field(None, max_length=120)
+    avatar_url: Optional[str] = Field(None, max_length=410_000)
+
+    @field_validator("first_name")
+    @classmethod
+    def _validate_first_name(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        from finance_core.db.users import validate_first_name
+
+        return validate_first_name(value)
+
+    @field_validator("avatar_url")
+    @classmethod
+    def _validate_avatar_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        from finance_core.db.users import validate_avatar_data_uri
+
+        return validate_avatar_data_uri(value)
+
+    @model_validator(mode="after")
+    def _require_any_change(self) -> "UpdateProfileRequest":
+        if "first_name" not in self.model_fields_set and "avatar_url" not in self.model_fields_set:
+            raise ValueError("Minimal satu kolom profil harus diisi.")
+        if "first_name" in self.model_fields_set and self.first_name is None:
+            raise ValueError("Nama tidak boleh kosong.")
+        return self
 
 
 class TokenResponse(BaseModel):

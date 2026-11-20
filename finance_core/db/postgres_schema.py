@@ -357,6 +357,11 @@ _MIGRATION_8: tuple[str, ...] = (
 )
 
 
+_MIGRATION_9: tuple[str, ...] = (
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
+)
+
+
 _POSTGRES_MIGRATIONS = {
     1: _MIGRATION_1,
     2: _MIGRATION_2,
@@ -366,6 +371,7 @@ _POSTGRES_MIGRATIONS = {
     6: _MIGRATION_6,
     7: _MIGRATION_7,
     8: _MIGRATION_8,
+    9: _MIGRATION_9,
 }
 
 

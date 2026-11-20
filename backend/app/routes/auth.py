@@ -19,6 +19,7 @@ from finance_core.db.users import (
     get_user_by_id,
     link_google_identity,
     unlink_telegram_account,
+    update_user_profile,
 )
 
 from ..auth.client_ip import client_ip
@@ -53,6 +54,7 @@ from ..models.schemas import (
     GoogleLinkRequest,
     RefreshRequest,
     TokenResponse,
+    UpdateProfileRequest,
     UserLogin,
     UserRegister,
     UserResponse,
@@ -243,6 +245,32 @@ def get_profile(current_user: AppUser = Depends(get_current_user)) -> UserRespon
     """Get the profile of the currently logged-in user."""
 
     return UserResponse.model_validate(current_user)
+
+
+@router.patch("/me", response_model=UserResponse)
+def update_profile(
+    payload: UpdateProfileRequest,
+    current_user: AppUser = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_db),
+) -> UserResponse:
+    """Update the display name and/or avatar photo of the signed-in user."""
+
+    fields = payload.model_fields_set
+    kwargs: dict[str, object] = {}
+    if "first_name" in fields:
+        kwargs["first_name"] = payload.first_name
+    if "avatar_url" in fields:
+        kwargs["avatar_url"] = payload.avatar_url
+
+    with db_transaction(db):
+        updated = update_user_profile(db, user_id=current_user.id, **kwargs)  # type: ignore[arg-type]
+
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pengguna tidak ditemukan.",
+        )
+    return UserResponse.model_validate(updated)
 
 
 @router.post("/telegram-link-token", status_code=status.HTTP_201_CREATED)
