@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Colors, Space, Type } from '../../utils/theme';
+import { Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { User } from '../../types';
 import { authApi, describeApiError } from '../../services/auth';
 import { isGoogleAuthAvailable, requestGoogleIdToken } from '../../services/googleAuth';
@@ -25,6 +26,8 @@ export function LinkGoogleSheet({ visible, onClose, onLinked }: LinkGoogleSheetP
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const styles = useStyles(theme);
 
   const reset = () => {
     setPassword('');
@@ -33,6 +36,7 @@ export function LinkGoogleSheet({ visible, onClose, onLinked }: LinkGoogleSheetP
   };
 
   const close = () => {
+    if (loading) return;
     reset();
     onClose();
   };
@@ -113,22 +117,22 @@ export function LinkGoogleSheet({ visible, onClose, onLinked }: LinkGoogleSheetP
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   scroll: {
     flexGrow: 0,
     flexShrink: 1,
   },
   body: {
-    ...Type.body,
-    color: Colors.inkSoft,
+    ...type.body,
+    color: colors.inkSoft,
     marginBottom: Space.lg,
   },
   error: {
-    ...Type.caption,
-    color: Colors.danger,
+    ...type.caption,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   field: {
     marginBottom: Space.sm,
   },
-});
+}));

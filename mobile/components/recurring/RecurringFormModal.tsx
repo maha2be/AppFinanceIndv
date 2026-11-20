@@ -1,6 +1,6 @@
+import { AppAlert as Alert } from '../../services/appAlert';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,7 +8,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Colors, Fonts, Radius, Space } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Category, RecurringFrequency, RecurringTransaction, TransactionType } from '../../types';
 import { categoryApi } from '../../services/categories';
 import { recurringApi } from '../../services/recurring';
@@ -37,12 +38,6 @@ interface RecurringFormModalProps {
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_DAYS = Array.from({ length: 31 }, (_, index) => index + 1);
 
-const TYPE_ITEMS: ReadonlyArray<SegmentedItem<TransactionType>> = [
-  { key: 'expense', label: 'Pengeluaran', dotColor: Colors.expense },
-  { key: 'income', label: 'Pemasukan', dotColor: Colors.income },
-  { key: 'investment', label: 'Investasi', dotColor: Colors.investment },
-];
-
 const FREQUENCY_ITEMS: ReadonlyArray<SegmentedItem<RecurringFrequency>> = [
   { key: 'weekly', label: 'Mingguan' },
   { key: 'monthly', label: 'Bulanan' },
@@ -59,12 +54,14 @@ function DayGrid({
   selected,
   onSelect,
   groupLabel,
+  styles,
 }: {
   values: readonly number[];
   labels: readonly string[];
   selected: number;
   onSelect: (value: number) => void;
   groupLabel: string;
+  styles: ReturnType<typeof useStyles>;
 }) {
   const { width } = useWindowDimensions();
   const cellWidth = Math.max(
@@ -118,6 +115,14 @@ export function RecurringFormModal({
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+  const typeItems: ReadonlyArray<SegmentedItem<TransactionType>> = [
+    { key: 'expense', label: 'Pengeluaran', dotColor: colors.expense },
+    { key: 'income', label: 'Pemasukan', dotColor: colors.income },
+    { key: 'investment', label: 'Investasi', dotColor: colors.investment },
+  ];
 
   useEffect(() => {
     if (!visible) return;
@@ -270,7 +275,7 @@ export function RecurringFormModal({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Segmented items={TYPE_ITEMS} value={type} onChange={setType} label="Jenis transaksi" />
+        <Segmented items={typeItems} value={type} onChange={setType} label="Jenis transaksi" />
 
         {error ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -332,6 +337,7 @@ export function RecurringFormModal({
             selected={dayOfWeek}
             onSelect={setDayOfWeek}
             groupLabel="Pilih hari"
+            styles={styles}
           />
         ) : (
           <DayGrid
@@ -340,6 +346,7 @@ export function RecurringFormModal({
             selected={dayOfMonth}
             onSelect={setDayOfMonth}
             groupLabel="Pilih tanggal"
+            styles={styles}
           />
         )}
         <Text style={styles.hint}>
@@ -396,7 +403,7 @@ export function RecurringFormModal({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   scroll: {
     flexGrow: 0,
     flexShrink: 1,
@@ -415,7 +422,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     marginBottom: Space.xs,
   },
   fieldSpacer: {
@@ -437,39 +444,39 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderRadius: Radius.control,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayCellActive: {
-    backgroundColor: Colors.ink,
-    borderColor: Colors.ink,
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
   },
   dayCellPressed: {
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
   },
   dayText: {
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   dayTextActive: {
-    color: Colors.onInk,
+    color: colors.onInk,
   },
   hint: {
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginBottom: Space.lg,
   },
   error: {
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   deleteRow: {
@@ -482,6 +489,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
   },
-});
+}));

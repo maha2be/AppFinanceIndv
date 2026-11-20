@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AppState,
   Pressable,
   StyleSheet,
   Text,
@@ -7,7 +8,8 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius, Space, Type } from '../utils/theme';
+import { Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { User } from '../types';
 import { authApi, describeApiError } from '../services/auth';
 import {
@@ -22,6 +24,9 @@ import { Button } from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
 import { ErrorState } from '../components/ui/ErrorState';
 import { SkeletonRows } from '../components/ui/Skeleton';
+import { getAccountDeletionMethod } from '../utils/accountDeletion';
+import { getAppLockState, subscribeAppLock, withAppLockCredentialPrompt } from '../services/appLock';
+import { isAuthenticated, subscribeSession } from '../services/session';
 
 export default function DeleteAccountScreen() {
   const [user, setUser] = useState<User | null>(null);
@@ -31,6 +36,13 @@ export default function DeleteAccountScreen() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const proofGeneration = useRef(0);
+  const mounted = useRef(true);
+  const googlePrompt = useRef(false);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const clearSecrets = useCallback(() => {
     setPassword('');
@@ -41,10 +53,37 @@ export default function DeleteAccountScreen() {
   useFocusEffect(
     useCallback(() => {
       return () => {
+        proofGeneration.current += 1;
         clearSecrets();
       };
     }, [clearSecrets])
   );
+
+  useEffect(() => {
+    mounted.current = true;
+    const invalidate = () => {
+      proofGeneration.current += 1;
+      clearSecrets();
+    };
+    const lifecycle = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') {
+        if (googlePrompt.current) clearSecrets();
+        else invalidate();
+      }
+    });
+    const unsubscribeLock = subscribeAppLock(() => {
+      const lock = getAppLockState();
+      if ((!lock.ready || lock.locked || lock.covered) && !googlePrompt.current) invalidate();
+    });
+    const unsubscribeSession = subscribeSession(invalidate);
+    return () => {
+      mounted.current = false;
+      proofGeneration.current += 1;
+      lifecycle.remove();
+      unsubscribeLock();
+      unsubscribeSession();
+    };
+  }, [clearSecrets]);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -64,10 +103,12 @@ export default function DeleteAccountScreen() {
     router.back();
   };
 
-  const requiresPassword = Boolean(user?.has_password);
+  const requiresPassword = user === null || getAccountDeletionMethod(user) === 'password';
 
   const handleDeleteAccount = async () => {
-    if (loading || !user) return;
+    if (submitting.current || loading || !user) return;
+    const lock = getAppLockState();
+    if (!isAuthenticated() || !lock.ready || lock.locked || lock.covered) return;
     if (confirmationText.trim() !== 'DELETE') {
       setError('Type DELETE in uppercase to confirm account deletion.');
       return;
@@ -81,6 +122,13 @@ export default function DeleteAccountScreen() {
       return;
     }
 
+    submitting.current = true;
+    const ticket = proofGeneration.current;
+    const stillCurrent = () => {
+      const currentLock = getAppLockState();
+      return mounted.current && ticket === proofGeneration.current && isAuthenticated() &&
+        currentLock.ready && !currentLock.locked && !currentLock.covered;
+    };
     setLoading(true);
     setError(null);
     try {
@@ -91,29 +139,46 @@ export default function DeleteAccountScreen() {
         });
       } else {
         const available = await isGoogleAuthAvailable();
+        if (!stillCurrent()) return;
         if (!available) {
           throw new Error('GOOGLE_UNAVAILABLE');
         }
         await signOutGoogle();
-        const idToken = await requestGoogleIdToken();
+        if (!stillCurrent()) return;
+        let idToken: string | null;
+        googlePrompt.current = true;
+        try {
+          idToken = await withAppLockCredentialPrompt(requestGoogleIdToken);
+        } finally {
+          googlePrompt.current = false;
+        }
         if (!idToken) {
           // User cancelled the Google prompt; never delete or clear session.
           return;
+        }
+        if (!stillCurrent()) {
+          throw new Error('Verification was interrupted. Confirm deletion again.');
         }
         await authApi.deleteAccount({
           confirmation: 'DELETE',
           id_token: idToken,
         });
       }
-      clearSecrets();
-      router.replace('/(auth)/login');
+      if (mounted.current) {
+        clearSecrets();
+        router.replace('/(auth)/login');
+      }
     } catch (err) {
-      setError(
-        describeGoogleError(err) ??
-          describeApiError(err, 'Unable to delete account. Your session and data remain intact.')
-      );
+      if (mounted.current) {
+        setPassword('');
+        setError(
+          describeGoogleError(err) ??
+            describeApiError(err, 'Unable to delete account. Your session and data remain intact.')
+        );
+      }
     } finally {
-      setLoading(false);
+      submitting.current = false;
+      if (mounted.current) setLoading(false);
     }
   };
 
@@ -127,7 +192,7 @@ export default function DeleteAccountScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
         <Text style={styles.title}>Delete account</Text>
       </View>
@@ -142,7 +207,7 @@ export default function DeleteAccountScreen() {
         <View style={styles.content}>
           <View style={styles.warningBox} accessibilityRole="alert">
             <View style={styles.warningHeader}>
-              <Ionicons name="warning-outline" size={20} color={Colors.danger} />
+              <Ionicons name="warning-outline" size={20} color={colors.danger} />
               <Text style={styles.warningTitle}>Permanent data deletion</Text>
             </View>
             <Text style={styles.warningBody}>
@@ -165,6 +230,7 @@ export default function DeleteAccountScreen() {
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              editable={!loading}
               autoComplete="password"
               textContentType="password"
               hint={
@@ -189,6 +255,7 @@ export default function DeleteAccountScreen() {
             label="Type DELETE to confirm"
             placeholder="DELETE"
             value={confirmationText}
+            editable={!loading}
             onChangeText={setConfirmationText}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -223,7 +290,7 @@ export default function DeleteAccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -238,7 +305,7 @@ const styles = StyleSheet.create({
     marginLeft: -Space.sm,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
   },
   loadingBlock: {
     paddingTop: Space.lg,
@@ -247,9 +314,9 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   warningBox: {
-    backgroundColor: Colors.dangerTint,
+    backgroundColor: colors.dangerTint,
     borderWidth: 1,
-    borderColor: 'rgba(163, 43, 43, 0.28)',
+    borderColor: colors.dangerBorder,
     borderRadius: Radius.block,
     padding: Space.lg,
     gap: Space.sm,
@@ -261,36 +328,36 @@ const styles = StyleSheet.create({
     gap: Space.sm,
   },
   warningTitle: {
-    ...Type.title,
-    color: Colors.danger,
+    ...type.title,
+    color: colors.danger,
   },
   warningBody: {
-    ...Type.body,
-    color: Colors.ink,
+    ...type.body,
+    color: colors.ink,
   },
   reauthNote: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.block,
     padding: Space.lg,
     gap: Space.xs,
     marginBottom: Space.lg,
   },
   reauthTitle: {
-    ...Type.bodyStrong,
-    color: Colors.ink,
+    ...type.bodyStrong,
+    color: colors.ink,
   },
   reauthBody: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
   },
   error: {
-    ...Type.caption,
-    color: Colors.danger,
+    ...type.caption,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   checkboxWrap: {
     marginBottom: Space.xl,
   },
-});
+}));

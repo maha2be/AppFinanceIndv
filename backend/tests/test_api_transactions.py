@@ -118,3 +118,32 @@ def test_debt_payment_cannot_exceed_remaining_balance(auth_client) -> None:
     )
     assert partial.status_code == 201
     assert partial.json()["amount"] == 100_000
+
+
+def test_quick_input_crypto_xrp_persists_asset_name_in_transactions(auth_client) -> None:
+    preview_res = auth_client.post(
+        "/api/transactions/quick-input",
+        json={"text": "crypto xrp 150000"},
+    )
+    assert preview_res.status_code == 200
+    preview = preview_res.json()
+    assert preview["is_valid"] is True
+    assert preview["type"] == "investment"
+    assert preview["category_name"] == "Crypto"
+    assert preview["asset_name"] == "XRP"
+    assert preview["amount"] == 150_000
+
+    confirm_res = auth_client.post(
+        "/api/transactions/quick-input/confirm",
+        json={"text": "crypto xrp 150000"},
+    )
+    assert confirm_res.status_code == 201
+    saved = confirm_res.json()
+    assert saved["category_name"] == "Crypto"
+    assert saved["asset_name"] == "XRP"
+    assert saved["amount"] == 150_000
+
+    listed = auth_client.get("/api/transactions").json()
+    match = next(row for row in listed if row["id"] == saved["id"])
+    assert match["asset_name"] == "XRP"
+    assert match["category_name"] == "Crypto"

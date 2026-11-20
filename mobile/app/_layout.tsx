@@ -1,10 +1,18 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { Colors, Fonts } from '../utils/theme';
-import { hydrateSession, isAuthenticated, subscribeSession } from '../services/session';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { Fonts } from '../utils/theme';
+import { createThemedStyles, hydrateTheme, useTheme } from '../services/theme';
+import { hydrateInstallmentReminders } from '../services/installmentNotifications';
+import { clearSession, hydrateSession, isAuthenticated, subscribeSession } from '../services/session';
+import {
+  getAppLockState, handleAppLockState, hydrateAppLock, subscribeAppLock,
+} from '../services/appLock';
+import { AppLockView } from '../components/security/AppLockView';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppAlertHost } from '../components/security/AppAlertHost';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -17,11 +25,27 @@ export default function RootLayout() {
   });
   const router = useRouter();
   const segments = useSegments();
+  const appLock = useSyncExternalStore(subscribeAppLock, getAppLockState, getAppLockState);
+  const theme = useTheme();
+  const { colors, isDark } = theme;
+  const styles = useStyles(theme);
+  const gated = authed && (!appLock.ready || appLock.locked || appLock.covered);
+
+  useEffect(() => {
+    if (!gated) return;
+    const listener = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => listener.remove();
+  }, [gated]);
 
   useEffect(() => {
     let mounted = true;
 
-    hydrateSession().finally(() => {
+    handleAppLockState(AppState.currentState || 'active');
+    Promise.all([
+      hydrateTheme(),
+      hydrateInstallmentReminders(),
+      hydrateSession().then(() => hydrateAppLock()),
+    ]).finally(() => {
       if (mounted) {
         setAuthed(isAuthenticated());
         setReady(true);
@@ -33,12 +57,48 @@ export default function RootLayout() {
         setAuthed(isAuthenticated());
       }
     });
+    const lifecycle = AppState.addEventListener('change', handleAppLockState);
+
+    let notificationSub: { remove?: () => void } | undefined;
+    if (Platform.OS !== 'web') {
+      try {
+        const Notifications = require('expo-notifications') as typeof import('expo-notifications');
+        notificationSub = Notifications.addNotificationResponseReceivedListener((response) => {
+          const route = response?.notification?.request?.content?.data?.route;
+          if (mounted && isAuthenticated() && route === '/debts') {
+            router.push('/debts');
+          }
+        });
+      } catch {
+        // Ignore when running without the notifications native module.
+      }
+    }
 
     return () => {
       mounted = false;
       unsubscribe();
+      lifecycle.remove();
+      notificationSub?.remove?.();
     };
-  }, []);
+  }, [router]);
+
+  useEffect(() => {
+    if (!authed || !appLock.enabled || Platform.OS === 'web') return;
+    let capture: typeof import('expo-screen-capture') | undefined;
+    let disposed = false;
+    try {
+      capture = require('expo-screen-capture');
+      capture!.preventScreenCaptureAsync('app-lock').then(async () => {
+        if (disposed) await capture!.allowScreenCaptureAsync('app-lock');
+      }).catch(() => {});
+    } catch {
+      // Older installed binaries still use the opaque JS privacy gate.
+    }
+    return () => {
+      disposed = true;
+      capture?.allowScreenCaptureAsync('app-lock').catch(() => {});
+    };
+  }, [authed, appLock.enabled]);
 
   useEffect(() => {
     if (!ready) {
@@ -57,39 +117,65 @@ export default function RootLayout() {
   if (booting) {
     return (
       <View style={styles.loading}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         <Text style={styles.wordmark}>Bot04</Text>
-        <ActivityIndicator size="small" color={Colors.inkMuted} />
+        <ActivityIndicator size="small" color={colors.inkMuted} />
       </View>
     );
   }
 
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <View
+        style={styles.navigator}
+        pointerEvents={gated ? 'none' : 'auto'}
+        accessibilityElementsHidden={gated}
+        importantForAccessibility={gated ? 'no-hide-descendants' : 'auto'}
+      >
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: Colors.paper },
+          contentStyle: { backgroundColor: colors.paper },
           animation: 'fade',
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="debts" options={{ headerShown: false }} />
         <Stack.Screen name="recurring" options={{ headerShown: false }} />
+        <Stack.Screen name="transactions" options={{ headerShown: false }} />
+        <Stack.Screen name="transaction/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="transaction-history" options={{ headerShown: false }} />
         <Stack.Screen name="change-password" options={{ headerShown: false }} />
         <Stack.Screen name="delete-account" options={{ headerShown: false }} />
+        <Stack.Screen name="app-lock" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)/register" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)/forgot-password" options={{ headerShown: false }} />
       </Stack>
+      </View>
+      {gated ? (
+        <View style={styles.lockCover} accessibilityViewIsModal>
+          <SafeAreaProvider>
+            <AppLockView onSignOut={async () => {
+              await clearSession();
+              router.replace('/(auth)/login');
+            }} />
+          </SafeAreaProvider>
+        </View>
+      ) : null}
+      <AppAlertHost host="root" />
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
+  navigator: { flex: 1 },
+  lockCover: { ...StyleSheet.absoluteFill, zIndex: 100, backgroundColor: colors.paper },
   loading: {
     flex: 1,
-    backgroundColor: Colors.paper,
+    backgroundColor: colors.paper,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
@@ -97,6 +183,6 @@ const styles = StyleSheet.create({
   wordmark: {
     fontFamily: Fonts.serif,
     fontSize: 40,
-    color: Colors.ink,
+    color: colors.ink,
   },
-});
+}));

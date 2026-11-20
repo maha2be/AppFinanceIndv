@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, View, ViewStyle } from 'react-native';
 import { useReducedMotion } from '../../utils/motion';
-import { Colors, Radius, Space } from '../../utils/theme';
+import { Radius, Space } from '../../utils/theme';
+import { useTheme } from '../../services/theme';
 
 interface SkeletonProps {
   width?: number | `${number}%`;
@@ -13,6 +14,7 @@ interface SkeletonProps {
 /** Quiet placeholder block with a soft pulse. Static under reduce-motion. */
 export function Skeleton({ width = '100%', height = 12, radius = Radius.control, style }: SkeletonProps) {
   const reduced = useReducedMotion();
+  const { colors } = useTheme();
   const pulse = useRef(new Animated.Value(0.55)).current;
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export function Skeleton({ width = '100%', height = 12, radius = Radius.control,
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       style={[
-        { width, height, borderRadius: radius, backgroundColor: Colors.surfaceAlt, opacity: pulse },
+        { width, height, borderRadius: radius, backgroundColor: colors.surfaceAlt, opacity: pulse },
         style,
       ]}
     />

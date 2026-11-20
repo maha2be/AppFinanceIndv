@@ -160,3 +160,97 @@ def test_telegram_link_can_be_removed_without_losing_data(client):
 
     listed = client.get("/api/transactions", headers=headers).json()
     assert len(listed) == 1
+
+
+def _sample_png_data_uri() -> str:
+    import base64
+
+    payload = base64.b64encode(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR").decode("ascii")
+    return f"data:image/png;base64,{payload}"
+
+
+def _sample_jpeg_data_uri() -> str:
+    import base64
+
+    payload = base64.b64encode(b"\xff\xd8\xff\xe0\x00\x10JFIF").decode("ascii")
+    return f"data:image/jpeg;base64,{payload}"
+
+
+def test_patch_profile_updates_name_and_avatar_and_clears_avatar(client):
+    registered = client.post(
+        "/api/auth/register",
+        json={"email": "editme@example.com", "password": "password123", "first_name": "Ayu"},
+    )
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    other = client.post(
+        "/api/auth/register",
+        json={"email": "other@example.com", "password": "password123", "first_name": "Budi"},
+    )
+    other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+
+    assert client.patch("/api/auth/me", json={"first_name": "Anon"}).status_code == 401
+
+    png_uri = _sample_png_data_uri()
+    updated = client.patch(
+        "/api/auth/me",
+        json={"first_name": "  Ayu Lestari  ", "avatar_url": png_uri},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["first_name"] == "Ayu Lestari"
+    assert updated.json()["avatar_url"] == png_uri
+
+    # Updating only the name keeps the existing avatar intact.
+    jpeg_uri = _sample_jpeg_data_uri()
+    name_only = client.patch("/api/auth/me", json={"first_name": "Ayu L."}, headers=headers)
+    assert name_only.status_code == 200
+    assert name_only.json()["first_name"] == "Ayu L."
+    assert name_only.json()["avatar_url"] == png_uri
+
+    # Updating only the avatar keeps the existing name intact.
+    avatar_only = client.patch("/api/auth/me", json={"avatar_url": jpeg_uri}, headers=headers)
+    assert avatar_only.status_code == 200
+    assert avatar_only.json()["first_name"] == "Ayu L."
+    assert avatar_only.json()["avatar_url"] == jpeg_uri
+
+    # Explicit null clears only the avatar.
+    cleared = client.patch("/api/auth/me", json={"avatar_url": None}, headers=headers)
+    assert cleared.status_code == 200
+    assert cleared.json()["first_name"] == "Ayu L."
+    assert cleared.json()["avatar_url"] is None
+
+    # Other user remains untouched.
+    other_me = client.get("/api/auth/me", headers=other_headers)
+    assert other_me.status_code == 200
+    assert other_me.json()["first_name"] == "Budi"
+    assert other_me.json()["avatar_url"] is None
+
+
+def test_patch_profile_rejects_invalid_names_and_untrusted_avatars(client):
+    import base64
+
+    registered = client.post(
+        "/api/auth/register",
+        json={"email": "validate@example.com", "password": "password123", "first_name": "Ayu"},
+    )
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+
+    assert client.patch("/api/auth/me", json={}, headers=headers).status_code == 422
+    assert client.patch("/api/auth/me", json={"first_name": "   "}, headers=headers).status_code == 422
+    assert client.patch("/api/auth/me", json={"first_name": None}, headers=headers).status_code == 422
+    assert client.patch("/api/auth/me", json={"first_name": "A" * 81}, headers=headers).status_code == 422
+    assert client.patch(
+        "/api/auth/me", json={"avatar_url": "https://evil.example/a.png"}, headers=headers
+    ).status_code == 422
+    svg = base64.b64encode(b"<svg xmlns='http://www.w3.org/2000/svg'/>").decode("ascii")
+    assert client.patch(
+        "/api/auth/me", json={"avatar_url": f"data:image/svg+xml;base64,{svg}"}, headers=headers
+    ).status_code == 422
+    fake_png = base64.b64encode(b"not-actually-a-png").decode("ascii")
+    assert client.patch(
+        "/api/auth/me", json={"avatar_url": f"data:image/png;base64,{fake_png}"}, headers=headers
+    ).status_code == 422
+    oversized = base64.b64encode(b"\xff\xd8\xff" + b"a" * 300_000).decode("ascii")
+    assert client.patch(
+        "/api/auth/me", json={"avatar_url": f"data:image/jpeg;base64,{oversized}"}, headers=headers
+    ).status_code == 422

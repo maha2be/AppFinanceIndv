@@ -1,7 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PeriodReport } from '../types';
-import { Colors, Fonts, Space, Type } from '../utils/theme';
+import { Fonts, Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { amountFontSize, formatRupiah } from '../utils/formatRupiah';
 import { Card } from './ui/Card';
 import { Amount } from './ui/Amount';
@@ -9,14 +10,51 @@ import { Skeleton } from './ui/Skeleton';
 
 interface ReportSummaryCardProps {
   report: PeriodReport | null;
+  periodLabel?: string;
+  onTogglePeriod?: () => void;
+  periodLoading?: boolean;
 }
 
 /** Hero balance block: one large serif figure, three semantic columns. */
-export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
+export function ReportSummaryCard({
+  report,
+  periodLabel,
+  onTogglePeriod,
+  periodLoading = false,
+}: ReportSummaryCardProps) {
+  const theme = useTheme();
+  const { colors, type } = theme;
+  const styles = useStyles(theme);
+
+  const periodToggle =
+    periodLabel && onTogglePeriod ? (
+      <Pressable
+        onPress={onTogglePeriod}
+        disabled={false}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={`Periode laporan ${periodLabel}`}
+        accessibilityHint="Ketuk untuk mengubah periode laporan antara Hari, Minggu, dan Bulan"
+        accessibilityState={{ busy: periodLoading }}
+        style={({ pressed }) => [
+          styles.periodButton,
+          pressed && styles.periodButtonPressed,
+        ]}
+      >
+        {periodLoading ? (
+          <ActivityIndicator size="small" color={colors.inkSoft} />
+        ) : null}
+        <Text style={styles.periodButtonText}>{periodLabel}</Text>
+      </Pressable>
+    ) : null;
+
   if (!report) {
     return (
       <Card style={styles.card}>
-        <Skeleton width="38%" height={11} />
+        <View style={styles.headerRow}>
+          <Skeleton width="38%" height={11} />
+          {periodToggle}
+        </View>
         <Skeleton width="62%" height={40} style={styles.skeletonAmount} />
         <View style={styles.statsRow}>
           {[0, 1, 2].map((index) => (
@@ -37,12 +75,15 @@ export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
 
   return (
     <Card style={styles.card}>
-      <Text style={styles.eyebrow}>{report.title}</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.eyebrow}>{report.title}</Text>
+        {periodToggle}
+      </View>
       <Text
         style={[
-          Type.hero,
+          type.hero,
           { fontSize: amountFontSize(figure), lineHeight: amountFontSize(figure) + 4 },
-          { color: positive ? Colors.income : Colors.expense },
+          { color: positive ? colors.income : colors.expense },
         ]}
         numberOfLines={1}
         accessibilityLabel={`Sisa bersih ${figure}`}
@@ -51,11 +92,11 @@ export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
       </Text>
 
       <View style={styles.statsRow}>
-        <Stat label="Pemasukan" value={report.total_income} tone="income" />
+        <Stat label="Pemasukan" value={report.total_income} tone="income" styles={styles} />
         <View style={styles.divider} />
-        <Stat label="Pengeluaran" value={report.total_expense} tone="expense" />
+        <Stat label="Pengeluaran" value={report.total_expense} tone="expense" styles={styles} />
         <View style={styles.divider} />
-        <Stat label="Investasi" value={report.total_investment} tone="investment" />
+        <Stat label="Investasi" value={report.total_investment} tone="investment" styles={styles} />
       </View>
     </Card>
   );
@@ -65,10 +106,12 @@ function Stat({
   label,
   value,
   tone,
+  styles,
 }: {
   label: string;
   value: number;
   tone: 'income' | 'expense' | 'investment';
+  styles: ReturnType<typeof useStyles>;
 }) {
   return (
     <View style={styles.stat}>
@@ -85,16 +128,46 @@ function Stat({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   card: {
     paddingVertical: Space.xl,
     paddingHorizontal: Space.lg,
     marginBottom: Space.lg,
   },
-  eyebrow: {
-    ...Type.micro,
-    textTransform: 'uppercase',
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Space.sm,
     marginBottom: Space.sm,
+  },
+  eyebrow: {
+    ...type.micro,
+    textTransform: 'uppercase',
+    flex: 1,
+    minWidth: 0,
+  },
+  periodButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surfaceAlt,
+    flexShrink: 0,
+  },
+  periodButtonPressed: {
+    opacity: 0.75,
+  },
+  periodButtonText: {
+    fontFamily: Fonts.semibold,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.ink,
   },
   skeletonAmount: {
     marginBottom: Space.xl,
@@ -106,7 +179,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
     paddingTop: Space.md,
     marginTop: Space.md,
   },
@@ -117,12 +190,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 11,
     lineHeight: 15,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginBottom: Space.xs,
   },
   divider: {
     width: 1,
-    backgroundColor: Colors.line,
+    backgroundColor: colors.line,
     marginHorizontal: Space.md,
   },
-});
+}));

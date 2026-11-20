@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Colors, Fonts, Space } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 export interface SegmentedItem<K extends string> {
   key: K;
@@ -22,6 +23,8 @@ interface SegmentedProps<K extends string> {
  * under the label, which keeps the paper quiet.
  */
 export function Segmented<K extends string>({ items, value, onChange, label }: SegmentedProps<K>) {
+  const theme = useTheme();
+  const styles = useStyles(theme);
   return (
     <View style={styles.container} accessibilityRole="tablist" accessibilityLabel={label}>
       {items.map((item) => {
@@ -49,11 +52,11 @@ export function Segmented<K extends string>({ items, value, onChange, label }: S
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
     marginBottom: Space.lg,
   },
   tab: {
@@ -77,17 +80,17 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
   },
   textActive: {
     fontFamily: Fonts.semibold,
-    color: Colors.ink,
+    color: colors.ink,
   },
   rule: {
     height: 2,
     backgroundColor: 'transparent',
   },
   ruleActive: {
-    backgroundColor: Colors.ink,
+    backgroundColor: colors.ink,
   },
-});
+}));

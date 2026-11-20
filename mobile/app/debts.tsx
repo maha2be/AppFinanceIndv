@@ -2,7 +2,8 @@ import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Space, Type } from '../utils/theme';
+import { Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { Debt, DebtSummary } from '../types';
 import { DebtCard } from '../components/DebtCard';
 import { DebtSummaryCard } from '../components/DebtSummaryCard';
@@ -17,6 +18,7 @@ import { Button } from '../components/ui/Button';
 import { FadeIn } from '../components/ui/FadeIn';
 import { debtApi } from '../services/debts';
 import { describeApiError } from '../services/auth';
+import { syncInstallmentRemindersFromApi } from '../services/installmentNotifications';
 
 export default function DebtsScreen() {
   const [filter, setFilter] = useState<DebtFilter>('all');
@@ -28,6 +30,9 @@ export default function DebtsScreen() {
   const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const loadData = useCallback(async () => {
     const filterParams: { type?: Debt['type']; status?: Debt['status'] } = {};
@@ -40,7 +45,10 @@ export default function DebtsScreen() {
       debtApi.getSummary(),
     ]);
 
-    if (debtResult.status === 'fulfilled') setDebts(debtResult.value);
+    if (debtResult.status === 'fulfilled') {
+      setDebts(debtResult.value);
+      void syncInstallmentRemindersFromApi();
+    }
     if (summaryResult.status === 'fulfilled') setSummary(summaryResult.value);
 
     const failures = [debtResult, summaryResult].filter(
@@ -97,7 +105,7 @@ export default function DebtsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Kembali"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
         <Text style={styles.title}>Hutang & piutang</Text>
       </View>
@@ -158,7 +166,7 @@ export default function DebtsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -173,7 +181,7 @@ const styles = StyleSheet.create({
     marginLeft: -Space.sm,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
   },
   loadingBlock: {
     paddingTop: Space.lg,
@@ -183,7 +191,7 @@ const styles = StyleSheet.create({
     paddingTop: Space.md,
     paddingBottom: Space.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
-    backgroundColor: Colors.paper,
+    borderTopColor: colors.line,
+    backgroundColor: colors.paper,
   },
-});
+}));

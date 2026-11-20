@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { DebtSummary } from '../types';
-import { Colors, Fonts, Space, Type } from '../utils/theme';
+import { Fonts, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { amountFontSize, formatRupiah } from '../utils/formatRupiah';
 import { Card } from './ui/Card';
 import { Amount } from './ui/Amount';
@@ -13,6 +14,9 @@ interface DebtSummaryCardProps {
 
 /** Two semantic columns plus the net position, set on paper. */
 export function DebtSummaryCard({ summary }: DebtSummaryCardProps) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   if (!summary) {
     return (
       <Card style={styles.card}>
@@ -38,18 +42,20 @@ export function DebtSummaryCard({ summary }: DebtSummaryCardProps) {
       <View style={styles.columns}>
         <Column
           label="Hutang"
-          dot={Colors.debt}
+          dot={colors.debt}
           amount={debt}
           count={summary.active_debt_count ?? 0}
           tone="debt"
+          styles={styles}
         />
         <View style={styles.divider} />
         <Column
           label="Piutang"
-          dot={Colors.receivable}
+          dot={colors.receivable}
           amount={receivable}
           count={summary.active_receivable_count ?? 0}
           tone="receivable"
+          styles={styles}
         />
       </View>
 
@@ -82,12 +88,14 @@ function Column({
   amount,
   count,
   tone,
+  styles,
 }: {
   label: string;
   dot: string;
   amount: number;
   count: number;
   tone: 'debt' | 'receivable';
+  styles: ReturnType<typeof useStyles>;
 }) {
   return (
     <View style={styles.column}>
@@ -106,7 +114,7 @@ function Column({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   card: {
     padding: Space.lg,
     marginBottom: Space.lg,
@@ -133,13 +141,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   columnCount: {
     fontFamily: Fonts.regular,
     fontSize: 11,
     lineHeight: 15,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginTop: 2,
   },
   skeletonValue: {
@@ -147,7 +155,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     width: 1,
-    backgroundColor: Colors.line,
+    backgroundColor: colors.line,
     marginHorizontal: Space.md,
   },
   netRow: {
@@ -155,19 +163,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
     marginTop: Space.md,
     paddingTop: Space.md,
   },
   netLabel: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
   },
   dueSoon: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    backgroundColor: Colors.investmentTint,
+    backgroundColor: colors.investmentTint,
     borderRadius: 6,
     paddingVertical: Space.sm,
     paddingHorizontal: Space.md,
@@ -177,13 +185,13 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: Colors.investment,
+    backgroundColor: colors.investment,
   },
   dueSoonText: {
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.investment,
+    color: colors.investment,
     flex: 1,
   },
-});
+}));

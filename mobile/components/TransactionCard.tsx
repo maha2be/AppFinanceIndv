@@ -2,7 +2,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Transaction } from '../types';
-import { Colors, Fonts, Space } from '../utils/theme';
+import { Fonts, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { formatDateIndo } from '../utils/formatRupiah';
 import { Amount } from './ui/Amount';
 
@@ -11,31 +12,44 @@ interface TransactionCardProps {
   onPress?: () => void;
 }
 
-const TYPE_META = {
-  income: { icon: 'arrow-down' as const, tone: 'income' as const, color: Colors.income, tint: Colors.incomeTint },
-  expense: { icon: 'arrow-up' as const, tone: 'expense' as const, color: Colors.expense, tint: Colors.expenseTint },
-  investment: {
-    icon: 'trending-up' as const,
-    tone: 'investment' as const,
-    color: Colors.investment,
-    tint: Colors.investmentTint,
-  },
-};
-
 /** One ledger line: type mark, label, signed amount, date. */
 export function TransactionCard({ transaction, onPress }: TransactionCardProps) {
-  const meta = TYPE_META[transaction.type] ?? TYPE_META.expense;
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+  const typeMeta = {
+    income: { icon: 'arrow-down' as const, tone: 'income' as const, color: colors.income, tint: colors.incomeTint },
+    expense: { icon: 'arrow-up' as const, tone: 'expense' as const, color: colors.expense, tint: colors.expenseTint },
+    investment: {
+      icon: 'trending-up' as const,
+      tone: 'investment' as const,
+      color: colors.investment,
+      tint: colors.investmentTint,
+    },
+  };
+  const meta = typeMeta[transaction.type] ?? typeMeta.expense;
   const sign = transaction.type === 'income' ? 1 : transaction.type === 'expense' ? -1 : 1;
 
   const title =
     transaction.category_name || (transaction.asset_name ? transaction.asset_name : 'Lainnya');
+  const asset = transaction.asset_name?.trim() || '';
+  const note = transaction.note?.trim() || '';
+  const detailParts: string[] = [];
+  if (asset && asset.toLowerCase() !== title.toLowerCase()) {
+    detailParts.push(asset);
+  }
+  if (note && note.toLowerCase() !== asset.toLowerCase()) {
+    detailParts.push(note);
+  }
+  const subtitle = detailParts.join(' · ') || formatDateIndo(transaction.transaction_date);
+  const a11yDetail = detailParts.length ? `, ${detailParts.join(', ')}` : '';
 
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityLabel={`${title}, ${formatDateIndo(transaction.transaction_date)}`}
+      accessibilityLabel={`${title}${a11yDetail}, ${formatDateIndo(transaction.transaction_date)}`}
       style={({ pressed }) => [styles.row, pressed && onPress ? styles.pressed : null]}
     >
       <View style={[styles.mark, { backgroundColor: meta.tint }]}>
@@ -47,7 +61,7 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
           {title}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {transaction.note || formatDateIndo(transaction.transaction_date)}
+          {subtitle}
         </Text>
       </View>
 
@@ -59,7 +73,7 @@ export function TransactionCard({ transaction, onPress }: TransactionCardProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -67,7 +81,7 @@ const styles = StyleSheet.create({
     paddingVertical: Space.md,
     minHeight: 60,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   pressed: {
     opacity: 0.7,
@@ -87,13 +101,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.ink,
+    color: colors.ink,
   },
   meta: {
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginTop: 1,
   },
   amountCol: {
@@ -103,7 +117,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 11,
     lineHeight: 15,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginTop: 2,
   },
-});
+}));

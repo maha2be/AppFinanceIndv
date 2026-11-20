@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { Colors, Space, Type } from '../../utils/theme';
+import { Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Screen } from '../../components/ui/Screen';
@@ -14,6 +15,8 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const styles = useStyles(theme);
 
   const handleLogin = async () => {
     if (loading || googleBusy) return;
@@ -117,7 +120,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   scroll: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -130,29 +133,29 @@ const styles = StyleSheet.create({
     gap: Space.sm,
   },
   wordmark: {
-    ...Type.h1,
+    ...type.h1,
     fontSize: 44,
     lineHeight: 48,
   },
   brandRule: {
     width: 28,
     height: 1,
-    backgroundColor: Colors.lineStrong,
+    backgroundColor: colors.lineStrong,
   },
   tagline: {
-    ...Type.micro,
+    ...type.micro,
     textTransform: 'uppercase',
   },
   form: {
     gap: 0,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
     marginBottom: Space.lg,
   },
   error: {
-    ...Type.caption,
-    color: Colors.danger,
+    ...type.caption,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   forgotRow: {
@@ -168,15 +171,15 @@ const styles = StyleSheet.create({
     marginTop: Space.xl,
   },
   footerText: {
-    ...Type.caption,
+    ...type.caption,
   },
   linkTap: {
     minHeight: 44,
     justifyContent: 'center',
   },
   link: {
-    ...Type.caption,
-    color: Colors.ink,
+    ...type.caption,
+    color: colors.ink,
     textDecorationLine: 'underline',
   },
-});
+}));

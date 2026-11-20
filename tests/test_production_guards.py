@@ -14,7 +14,7 @@ from finance_core.config import get_common_settings
 
 
 def _clear_shared_env(monkeypatch) -> None:
-    for name in ("DATABASE_URL", "DATABASE_PATH", "ENVIRONMENT", "TIMEZONE", "CURRENCY"):
+    for name in ("DATABASE_URL", "DATABASE_PATH", "ENVIRONMENT", "TIMEZONE", "CURRENCY", "ALLOW_SQLITE_IN_PRODUCTION"):
         monkeypatch.delenv(name, raising=False)
 
 def test_production_requires_database_url(monkeypatch) -> None:
@@ -33,6 +33,30 @@ def test_production_accepts_an_explicit_database_url(monkeypatch) -> None:
 
     assert settings.is_production
     assert settings.database_url == "postgresql://user:pass@127.0.0.1:5432/postgres"
+
+
+def test_existing_production_sqlite_requires_explicit_opt_in(monkeypatch, tmp_path) -> None:
+    _clear_shared_env(monkeypatch)
+    database = tmp_path / "existing.sqlite3"
+    database.touch()
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_PATH", str(database))
+    with pytest.raises(RuntimeError, match="requires DATABASE_URL"):
+        get_common_settings(load_dotenv_file=False)
+    monkeypatch.setenv("ALLOW_SQLITE_IN_PRODUCTION", "1")
+    settings = get_common_settings(load_dotenv_file=False)
+    assert settings.is_production
+    assert settings.database_path == str(database)
+
+
+@pytest.mark.parametrize("database_path", ["relative.sqlite3", "/missing-finance-db.sqlite3"])
+def test_production_sqlite_opt_in_rejects_missing_or_relative_path(monkeypatch, database_path) -> None:
+    _clear_shared_env(monkeypatch)
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ALLOW_SQLITE_IN_PRODUCTION", "1")
+    monkeypatch.setenv("DATABASE_PATH", database_path)
+    with pytest.raises(RuntimeError, match="absolute existing file"):
+        get_common_settings(load_dotenv_file=False)
 
 def test_development_may_stay_on_sqlite(monkeypatch) -> None:
     _clear_shared_env(monkeypatch)

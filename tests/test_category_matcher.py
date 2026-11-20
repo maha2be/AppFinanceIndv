@@ -134,3 +134,16 @@ def test_match_category_custom_name_is_word_bounded() -> None:
         confidence=0.0,
         needs_review=True,
     )
+
+
+def test_match_category_detects_xrp_and_crypto_assets() -> None:
+    expected = CategoryMatch(
+        "investment",
+        "Crypto",
+        asset_name="XRP",
+        confidence=1.0,
+        needs_review=False,
+    )
+    assert match_category("crypto xrp 50000") == expected
+    assert match_category("xrp 50000") == expected
+    assert match_category("beli crypto xrp 50000") == expected

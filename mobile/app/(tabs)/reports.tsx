@@ -1,9 +1,12 @@
-import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
-import { Colors, Fonts, Space, Type } from '../../utils/theme';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { PeriodReport, Transaction } from '../../types';
 import { ReportSummaryCard } from '../../components/ReportSummaryCard';
+import { FinancialStabilityCharts } from '../../components/reports/FinancialStabilityCharts';
 import { TransactionCard } from '../../components/TransactionCard';
 import { Screen } from '../../components/ui/Screen';
 import { Segmented } from '../../components/ui/Segmented';
@@ -32,8 +35,21 @@ export default function ReportsScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const requestSeqRef = useRef(0);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const fetchReport = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     try {
       let reportData: PeriodReport;
       if (period === 'daily') {
@@ -43,16 +59,25 @@ export default function ReportsScreen() {
       } else {
         reportData = await reportApi.getMonthlyReport();
       }
+      if (!mountedRef.current || seq !== requestSeqRef.current) {
+        return;
+      }
       setReport(reportData);
 
       const txs = await transactionApi.getTransactions({
         start_date: reportData.start_date,
         end_date: reportData.end_date,
-        limit: 50,
+        limit: 10,
       });
+      if (!mountedRef.current || seq !== requestSeqRef.current) {
+        return;
+      }
       setTransactions(txs);
       setError(null);
     } catch (err) {
+      if (!mountedRef.current || seq !== requestSeqRef.current) {
+        return;
+      }
       setError(describeApiError(err, 'Gagal memuat laporan.'));
     }
   }, [period]);
@@ -80,6 +105,11 @@ export default function ReportsScreen() {
 
       <FadeIn delay={60}>
         <ReportSummaryCard report={report} />
+      </FadeIn>
+
+      <FadeIn delay={90}>
+        <SectionHeader title="Kestabilan finansial" />
+        <FinancialStabilityCharts report={report} />
       </FadeIn>
 
       <FadeIn delay={120}>
@@ -110,7 +140,7 @@ export default function ReportsScreen() {
                   </Text>
                   <Amount value={cat.amount} tone="expense" />
                 </View>
-                <Progress value={cat.percentage} color={Colors.expense} />
+                <Progress value={cat.percentage} color={colors.expense} />
                 <Text style={styles.categoryPct}>{Math.round(cat.percentage)}% dari pengeluaran</Text>
               </View>
             ))}
@@ -119,34 +149,70 @@ export default function ReportsScreen() {
       </FadeIn>
 
       <FadeIn delay={180}>
-        <SectionHeader title={`Daftar transaksi (${transactions.length})`} />
+        <SectionHeader
+          title="Pratinjau transaksi (maks. 10 terbaru)"
+          actionLabel="Seluruh Transaksi"
+          actionUnderlined
+          onAction={() =>
+            router.push(
+              report
+                ? {
+                    pathname: '/transactions',
+                    params: {
+                      start_date: report.start_date,
+                      end_date: report.end_date,
+                    },
+                  }
+                : '/transactions'
+            )
+          }
+        />
         {transactions.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
             title="Tidak ada transaksi"
             message="Belum ada catatan di periode ini."
+            actionLabel="Riwayat perubahan"
+            onAction={() => router.push('/transaction-history')}
           />
         ) : (
           <View>
             {transactions.map((tx) => (
-              <TransactionCard key={tx.id} transaction={tx} />
+              <TransactionCard
+                key={tx.id}
+                transaction={tx}
+                onPress={() => router.push(`/transaction/${tx.id}`)}
+              />
             ))}
           </View>
         )}
+
+        <Pressable
+          onPress={() => router.push('/transaction-history')}
+          disabled={false}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Riwayat perubahan"
+          style={({ pressed }) => [styles.auditLinkRow, pressed ? styles.pressed : null]}
+        >
+          <Ionicons name="time-outline" size={16} color={colors.inkSoft} />
+          <Text style={styles.auditLinkText}>Riwayat perubahan</Text>
+          <Ionicons name="chevron-forward" size={15} color={colors.inkMuted} />
+        </Pressable>
       </FadeIn>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   title: {
-    ...Type.h1,
+    ...type.h1,
     marginBottom: Space.lg,
   },
   block: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: 10,
     paddingHorizontal: Space.lg,
     paddingVertical: Space.xs,
@@ -156,7 +222,7 @@ const styles = StyleSheet.create({
     paddingVertical: Space.md,
     gap: Space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   lastRow: {
     borderBottomWidth: 0,
@@ -168,11 +234,29 @@ const styles = StyleSheet.create({
     gap: Space.md,
   },
   categoryName: {
-    ...Type.bodyStrong,
+    ...type.bodyStrong,
     flex: 1,
   },
   categoryPct: {
-    ...Type.micro,
+    ...type.micro,
     letterSpacing: 0,
   },
-});
+  auditLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    minHeight: 44,
+    paddingVertical: Space.sm,
+    marginTop: Space.xs,
+  },
+  auditLinkText: {
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.inkSoft,
+    flex: 1,
+  },
+  pressed: {
+    opacity: 0.85,
+  },
+}));

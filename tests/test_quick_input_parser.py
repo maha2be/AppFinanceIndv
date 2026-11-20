@@ -139,3 +139,36 @@ def test_parse_quick_input_marks_uncertain_category_for_review() -> None:
     assert result.category_name == "Lainnya"
     assert result.needs_review is True
     assert result.confidence == 0.0
+
+
+def test_parse_quick_input_preserves_xrp_and_other_rp_suffixed_words() -> None:
+    xrp_plain = parse_quick_input("crypto xrp 50000", today=date(2026, 5, 30))
+    assert xrp_plain == QuickInputResult(
+        type="investment",
+        category_name="Crypto",
+        amount=50000,
+        note="",
+        asset_name="XRP",
+        transaction_date=date(2026, 5, 30),
+        confidence=1.0,
+        needs_review=False,
+        original_text="crypto xrp 50000",
+        error=None,
+    )
+
+    xrp_with_note = parse_quick_input("crypto xrp 100rb dca mingguan", today=date(2026, 5, 30))
+    assert xrp_with_note.asset_name == "XRP"
+    assert xrp_with_note.amount == 100_000
+    assert xrp_with_note.note == "dca mingguan"
+
+    xrp_without_crypto_word = parse_quick_input("xrp 250000", today=date(2026, 5, 30))
+    assert xrp_without_crypto_word.type == "investment"
+    assert xrp_without_crypto_word.category_name == "Crypto"
+    assert xrp_without_crypto_word.asset_name == "XRP"
+    assert xrp_without_crypto_word.amount == 250_000
+
+    unknown_coin = parse_quick_input("crypto tokenbaru 75000", today=date(2026, 5, 30))
+    assert unknown_coin.type == "investment"
+    assert unknown_coin.category_name == "Crypto"
+    assert unknown_coin.note == "tokenbaru"
+    assert unknown_coin.amount == 75_000

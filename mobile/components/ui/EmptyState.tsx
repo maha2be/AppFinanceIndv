@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Space } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Button } from './Button';
 
 interface EmptyStateProps {
@@ -20,10 +21,13 @@ export function EmptyState({
   actionLabel,
   onAction,
 }: EmptyStateProps) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   return (
     <View style={styles.container}>
       <View style={styles.iconWrap}>
-        <Ionicons name={icon} size={20} color={Colors.inkSoft} />
+        <Ionicons name={icon} size={20} color={colors.inkSoft} />
       </View>
       <Text style={styles.title}>{title}</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -39,7 +43,7 @@ export function EmptyState({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingVertical: Space.xxl,
@@ -49,7 +53,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Space.md,
@@ -58,14 +62,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 15,
     lineHeight: 21,
-    color: Colors.ink,
+    color: colors.ink,
     textAlign: 'center',
   },
   message: {
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     textAlign: 'center',
     marginTop: Space.xs,
     maxWidth: 280,
@@ -74,4 +78,4 @@ const styles = StyleSheet.create({
     marginTop: Space.lg,
     alignSelf: 'center',
   },
-});
+}));

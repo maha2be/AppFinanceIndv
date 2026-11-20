@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -15,7 +15,9 @@ from finance_core.db.transactions import (
     create_transaction,
     delete_transaction,
     get_transaction_by_id,
+    list_transaction_history,
     list_transactions,
+    list_transactions_page,
     update_transaction,
 )
 from finance_core.db.users import AppUser
@@ -32,6 +34,8 @@ from ..models.schemas import (
     QuickInputPreviewResponse,
     QuickInputRequest,
     TransactionCreate,
+    TransactionHistoryResponse,
+    TransactionPageResponse,
     TransactionResponse,
     TransactionUpdate,
 )
@@ -39,9 +43,7 @@ from ..models.schemas import (
 router = APIRouter(prefix="/api/transactions", tags=["Transactions"])
 
 
-def _custom_categories(
-    db: sqlite3.Connection, user_id: int
-) -> list[tuple[str, str]]:
+def _custom_categories(db: sqlite3.Connection, user_id: int) -> list[tuple[str, str]]:
     """Kategori kustom milik pengguna, untuk memprioritaskan quick input."""
 
     return [
@@ -49,6 +51,7 @@ def _custom_categories(
         for category in list_categories(db, user_id=user_id)
         if category.is_default == 0
     ]
+
 
 NOT_FOUND_DETAIL = "Transaksi tidak ditemukan."
 
@@ -155,9 +158,7 @@ def confirm_quick_input(
 
     try:
         with db_transaction(db):
-            transaction = save_quick_input_transaction(
-                db, user_id=current_user.id, preview=result
-            )
+            transaction = save_quick_input_transaction(db, user_id=current_user.id, preview=result)
     except TransactionServiceError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -189,6 +190,79 @@ def get_transactions(
         offset=offset,
     )
     return [TransactionResponse.model_validate(item) for item in items]
+
+
+@router.get("/history", response_model=list[TransactionHistoryResponse])
+def get_transaction_history(
+    transaction_id: int | None = Query(None, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: AppUser = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_db),
+) -> list[dict]:
+    """List owned snapshots, including deleted transactions."""
+    return list_transaction_history(
+        db,
+        user_id=current_user.id,
+        transaction_id=transaction_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/page", response_model=TransactionPageResponse)
+def get_transaction_page(
+    q: Optional[str] = Query(None, max_length=200),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    type: Optional[Literal["income", "expense", "investment"]] = Query(None),
+    category_id: Optional[int] = Query(None, ge=1),
+    min_amount: Optional[int] = Query(None, ge=1, le=9_007_199_254_740_991),
+    max_amount: Optional[int] = Query(None, ge=1, le=9_007_199_254_740_991),
+    sort: Literal["date_desc", "date_asc", "amount_desc", "amount_asc"] = Query("date_desc"),
+    page: int = Query(1, ge=1, le=2_147_483_647),
+    current_user: AppUser = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_db),
+) -> TransactionPageResponse:
+    """One page of the searchable, filterable transaction browser.
+
+    The page size is fixed so a client cannot request an unbounded read. Every
+    filter is scoped to the authenticated owner, and the total counts exactly the
+    rows the filters match, which is what numbered navigation needs.
+    """
+
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Tanggal awal tidak boleh setelah tanggal akhir.",
+        )
+    if min_amount is not None and max_amount is not None and min_amount > max_amount:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Nominal minimum tidak boleh lebih dari nominal maksimum.",
+        )
+
+    result = list_transactions_page(
+        db,
+        user_id=current_user.id,
+        page=page,
+        page_size=20,
+        start_date=start_date.isoformat() if start_date else None,
+        end_date=end_date.isoformat() if end_date else None,
+        transaction_type=type,
+        category_id=category_id,
+        search=q,
+        min_amount=min_amount,
+        max_amount=max_amount,
+        sort=sort,
+    )
+    return TransactionPageResponse(
+        items=[TransactionResponse.model_validate(item) for item in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        total_pages=result.total_pages,
+    )
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
@@ -243,13 +317,8 @@ def edit_transaction(
                 db,
                 user_id=current_user.id,
                 transaction_id=transaction_id,
-                amount=payload.amount,
-                category_id=payload.category_id,
-                transaction_date=(
-                    payload.transaction_date.isoformat() if payload.transaction_date else None
-                ),
-                note=payload.note,
-                asset_name=payload.asset_name,
+                source="api",
+                **payload.model_dump(exclude_unset=True, mode="json"),
             )
     except DerivedTransactionError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
@@ -269,7 +338,7 @@ def remove_transaction(
     try:
         with db_transaction(db):
             deleted = delete_transaction(
-                db, user_id=current_user.id, transaction_id=transaction_id
+                db, user_id=current_user.id, transaction_id=transaction_id, source="api"
             )
     except DerivedTransactionError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error

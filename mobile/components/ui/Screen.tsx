@@ -11,11 +11,14 @@ import {
   ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors, Space } from '../../utils/theme';
+import { Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 interface ScreenProps {
   children: React.ReactNode;
   scroll?: boolean;
+  /** Suspend touch scrolling without unmounting the scroll content. */
+  scrollEnabled?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
   /** Sticky block rendered after the scroll area (FAB, CTA bar). */
@@ -31,6 +34,7 @@ interface ScreenProps {
 export function Screen({
   children,
   scroll = true,
+  scrollEnabled = true,
   refreshing = false,
   onRefresh,
   footer,
@@ -38,20 +42,25 @@ export function Screen({
   bottomInset = false,
   keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height',
 }: ScreenProps) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+
   const body = scroll ? (
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[styles.content, contentStyle]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      scrollEnabled={scrollEnabled}
       refreshControl={
         onRefresh ? (
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Colors.ink}
-            colors={[Colors.ink]}
-            progressBackgroundColor={Colors.surface}
+            tintColor={colors.ink}
+            colors={[colors.ink]}
+            progressBackgroundColor={colors.surface}
           />
         ) : undefined
       }
@@ -75,10 +84,10 @@ export function Screen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: Colors.paper,
+    backgroundColor: colors.paper,
   },
   content: {
     paddingHorizontal: Space.gutter,
@@ -88,4 +97,4 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-});
+}));

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 from ..db.transactions import Transaction
 
@@ -15,6 +16,18 @@ class CategoryTotal:
     name: str
     amount: int
     percentage: float = 0.0
+
+
+@dataclass(frozen=True)
+class DailyFlowPoint:
+    """One day's cashflow totals and running net balance."""
+
+    date: str
+    income: int
+    expense: int
+    investment: int
+    net: int
+    cumulative_net: int
 
 
 @dataclass(frozen=True)
@@ -152,3 +165,51 @@ def aggregate_investments(
     ]
 
     return by_type, by_asset, total_invested
+
+
+def aggregate_daily_series(
+    transactions: list[Transaction],
+    *,
+    start_date: date,
+    end_date: date,
+) -> list[DailyFlowPoint]:
+    """Build a contiguous daily cashflow and cumulative net curve across [start_date, end_date]."""
+
+    if end_date < start_date:
+        return []
+
+    buckets: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
+    start_iso = start_date.isoformat()
+    end_iso = end_date.isoformat()
+
+    for tx in transactions:
+        if tx.transaction_date < start_iso or tx.transaction_date > end_iso:
+            continue
+        if tx.type == "income":
+            buckets[tx.transaction_date][0] += tx.amount
+        elif tx.type == "expense":
+            buckets[tx.transaction_date][1] += tx.amount
+        elif tx.type == "investment":
+            buckets[tx.transaction_date][2] += tx.amount
+
+    points: list[DailyFlowPoint] = []
+    running_net = 0
+    cursor = start_date
+    while cursor <= end_date:
+        iso = cursor.isoformat()
+        income, expense, investment = buckets[iso]
+        net = income - expense - investment
+        running_net += net
+        points.append(
+            DailyFlowPoint(
+                date=iso,
+                income=income,
+                expense=expense,
+                investment=investment,
+                net=net,
+                cumulative_net=running_net,
+            )
+        )
+        cursor += timedelta(days=1)
+
+    return points
