@@ -448,6 +448,7 @@ function createHarness({ componentPath, modules, props = {}, mountProps, moduleF
         create: (styles) => styles,
         absoluteFill: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
       },
+      Switch: 'Switch',
       Text: 'Text',
       View: 'View',
     },
@@ -502,9 +503,39 @@ function createHarness({ componentPath, modules, props = {}, mountProps, moduleF
     }),
   };
 
+  const defaultInstallmentRemindersService = {
+    useInstallmentReminders: () => ({
+      ready: true,
+      enabled: true,
+      hour: 9,
+      minute: 0,
+      permission: 'unknown',
+      scheduledCount: 0,
+      supported: true,
+    }),
+    getInstallmentReminderState: () => ({
+      ready: true,
+      enabled: true,
+      hour: 9,
+      minute: 0,
+      permission: 'unknown',
+      scheduledCount: 0,
+      supported: true,
+    }),
+    subscribeInstallmentReminders: () => () => {},
+    hydrateInstallmentReminders: async () => ({}),
+    requestInstallmentNotificationPermission: async () => 'unknown',
+    setInstallmentRemindersEnabled: async () => 'unknown',
+    setInstallmentReminderTime: async () => {},
+    syncInstallmentReminders: async () => 0,
+    syncInstallmentRemindersFromApi: async () => 0,
+    sendTestInstallmentNotification: async () => {},
+  };
+
   const mergedFallbacks = [
     ...moduleFallback,
     [/^(?:\.\.\/)+services\/theme$/, defaultThemeService],
+    [/^(?:\.\.\/)+services\/installmentNotifications$/, defaultInstallmentRemindersService],
   ];
 
   const Component = loadComponent(

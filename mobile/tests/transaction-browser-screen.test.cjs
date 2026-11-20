@@ -323,6 +323,7 @@ function createTabsHarness({ componentPath, transactions, report, handlers = {} 
     [/components\/ui\/EmptyState$/, { EmptyState: (props = {}) => node('EmptyState', props) }],
     [/components\/ui\/ErrorState$/, { ErrorState: stub('View') }],
     [/components\/ReportSummaryCard$/, { ReportSummaryCard: stub('View') }],
+    [/components\/reports\/FinancialStabilityCharts$/, { FinancialStabilityCharts: stub('View') }],
     [/components\/QuickInputBar$/, { QuickInputBar: stub('View') }],
     [/components\/DebtSummaryCard$/, { DebtSummaryCard: stub('View') }],
     [/components\/TransactionCard$/, {

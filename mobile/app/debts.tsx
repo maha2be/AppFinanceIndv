@@ -18,6 +18,7 @@ import { Button } from '../components/ui/Button';
 import { FadeIn } from '../components/ui/FadeIn';
 import { debtApi } from '../services/debts';
 import { describeApiError } from '../services/auth';
+import { syncInstallmentRemindersFromApi } from '../services/installmentNotifications';
 
 export default function DebtsScreen() {
   const [filter, setFilter] = useState<DebtFilter>('all');
@@ -44,7 +45,10 @@ export default function DebtsScreen() {
       debtApi.getSummary(),
     ]);
 
-    if (debtResult.status === 'fulfilled') setDebts(debtResult.value);
+    if (debtResult.status === 'fulfilled') {
+      setDebts(debtResult.value);
+      void syncInstallmentRemindersFromApi();
+    }
     if (summaryResult.status === 'fulfilled') setSummary(summaryResult.value);
 
     const failures = [debtResult, summaryResult].filter(

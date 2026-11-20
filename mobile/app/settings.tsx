@@ -1,6 +1,6 @@
 import { AppAlert as Alert } from '../services/appAlert';
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, useWindowDimensions, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Fonts, Radius, Space, ThemeMode } from '../utils/theme';
@@ -12,6 +12,12 @@ import { authApi, describeApiError } from '../services/auth';
 import { LinkGoogleSheet } from '../components/auth/LinkGoogleSheet';
 import { isGoogleAuthAvailable } from '../services/googleAuth';
 import { getAppLockState, subscribeAppLock } from '../services/appLock';
+import {
+  sendTestInstallmentNotification,
+  setInstallmentRemindersEnabled,
+  setInstallmentReminderTime,
+  useInstallmentReminders,
+} from '../services/installmentNotifications';
 
 export default function SettingsScreen() {
   const [user, setUser] = useState<User | null>(null);
@@ -36,6 +42,8 @@ export default function SettingsScreen() {
   );
   const theme = useTheme();
   const { mode: themeMode, colors, setThemeMode } = theme;
+  const reminders = useInstallmentReminders();
+  const [testingReminder, setTestingReminder] = useState(false);
   const styles = useStyles(theme);
 
   useEffect(() => {
@@ -302,6 +310,48 @@ export default function SettingsScreen() {
             styles={styles}
             colors={colors}
           />
+          <ReminderRow
+            reminders={reminders}
+            stacked={stackDetails}
+            disabled={accountBusy}
+            testing={testingReminder}
+            onToggle={async (next) => {
+              const status = await setInstallmentRemindersEnabled(next);
+              if (next && status === 'denied') {
+                Alert.alert(
+                  'Izin notifikasi ditolak',
+                  'Aktifkan izin notifikasi untuk FinanceApp / Expo Go di pengaturan perangkat.'
+                );
+              }
+            }}
+            onSelectHour={(hour) => {
+              void setInstallmentReminderTime(hour, 0);
+            }}
+            onTest={async () => {
+              if (testingReminder) return;
+              setTestingReminder(true);
+              try {
+                await sendTestInstallmentNotification();
+                if (mounted.current && focused.current) {
+                  Alert.alert(
+                    'Notifikasi dijadwalkan',
+                    'Pengingat cicilan akan muncul di panel notifikasi perangkat dalam 2 detik.'
+                  );
+                }
+              } catch (err) {
+                if (mounted.current && focused.current) {
+                  Alert.alert(
+                    'Gagal mengirim notifikasi',
+                    err instanceof Error ? err.message : 'Coba lagi sebentar lagi.'
+                  );
+                }
+              } finally {
+                if (mounted.current) setTestingReminder(false);
+              }
+            }}
+            styles={styles}
+            colors={colors}
+          />
           <DetailRow label="Mata uang" value={user?.currency || (profileLoading ? 'Loading...' : 'Not available')} stacked={stackDetails} styles={styles} />
           <DetailRow label="Zona waktu" value={user?.timezone || (profileLoading ? 'Loading...' : 'Not available')} stacked={stackDetails} styles={styles} />
           <DetailRow label="Versi" value="1.0.0" stacked={stackDetails} styles={styles} last />
@@ -474,6 +524,121 @@ function ThemeRow({
   );
 }
 
+const REMINDER_HOURS = [8, 9, 20] as const;
+
+function formatHour(hour: number, minute = 0): string {
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function ReminderRow({
+  reminders,
+  stacked,
+  disabled = false,
+  testing = false,
+  onToggle,
+  onSelectHour,
+  onTest,
+  styles,
+  colors,
+}: {
+  reminders: ReturnType<typeof useInstallmentReminders>;
+  stacked: boolean;
+  disabled?: boolean;
+  testing?: boolean;
+  onToggle: (enabled: boolean) => void;
+  onSelectHour: (hour: number) => void;
+  onTest: () => void;
+  styles: SettingsStyles;
+  colors: ReturnType<typeof useTheme>['colors'];
+}) {
+  const hint = !reminders.supported
+    ? 'Notifikasi perangkat tidak tersedia di versi web.'
+    : !reminders.enabled
+    ? 'Nonaktif · Pengingat jatuh tempo cicilan dimatikan'
+    : reminders.permission === 'denied'
+    ? 'Izin notifikasi ditolak · Aktifkan di pengaturan perangkat'
+    : reminders.permission === 'granted'
+    ? `Aktif · Pengingat H-3, H-1 & hari-H pukul ${formatHour(reminders.hour, reminders.minute)} (${reminders.scheduledCount} terjadwal)`
+    : `Siap · Aktifkan izin atau uji notifikasi (${formatHour(reminders.hour, reminders.minute)})`;
+
+  return (
+    <View style={styles.reminderBlock}>
+      <View style={styles.reminderTop}>
+        <View style={styles.themeMeta}>
+          <Text style={styles.themeLabel}>Pengingat cicilan</Text>
+          <Text style={styles.navHint}>{hint}</Text>
+        </View>
+        {reminders.supported ? (
+          <Switch
+            value={reminders.enabled}
+            onValueChange={onToggle}
+            disabled={disabled}
+            trackColor={{ false: colors.lineStrong, true: colors.inkSoft }}
+            thumbColor={colors.surface}
+            ios_backgroundColor={colors.lineStrong}
+            accessibilityLabel="Aktifkan pengingat cicilan"
+          />
+        ) : null}
+      </View>
+
+      {reminders.supported && reminders.enabled ? (
+        <View style={[styles.reminderControls, stacked && styles.reminderControlsStacked]}>
+          <View
+            style={styles.hourOptions}
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Jam pengingat cicilan"
+          >
+            {REMINDER_HOURS.map((hour) => {
+              const active = reminders.hour === hour;
+              const label = formatHour(hour);
+              return (
+                <Pressable
+                  key={hour}
+                  onPress={() => {
+                    if (!disabled) onSelectHour(hour);
+                  }}
+                  disabled={disabled}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`Jam pengingat ${label}`}
+                  accessibilityState={{ checked: active, selected: active, disabled }}
+                  style={({ pressed }) => [
+                    styles.hourPill,
+                    active && styles.themeOptionActive,
+                    pressed && !disabled && styles.themeOptionPressed,
+                  ]}
+                >
+                  <Text style={[styles.themeOptionText, active && styles.themeOptionTextActive]}>
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable
+            onPress={onTest}
+            disabled={disabled || testing}
+            accessibilityRole="button"
+            accessibilityLabel="Uji notifikasi cicilan"
+            accessibilityState={{ disabled: disabled || testing, busy: testing }}
+            style={({ pressed }) => [
+              styles.testNotifyButton,
+              pressed && !disabled && !testing && styles.themeOptionPressed,
+            ]}
+          >
+            {testing ? (
+              <ActivityIndicator size="small" color={colors.ink} />
+            ) : (
+              <Ionicons name="notifications-outline" size={15} color={colors.ink} />
+            )}
+            <Text style={styles.testNotifyText}>Uji notifikasi</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function DetailRow({ label, value, stacked, last = false, styles }: { label: string; value: string; stacked: boolean; last?: boolean; styles: SettingsStyles }) {
   return (
     <View style={[styles.detailRow, stacked && styles.stackedDetail, last && styles.lastRow]}>
@@ -608,6 +773,62 @@ const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   themeOptionTextActive: {
     color: colors.onInk,
     fontFamily: Fonts.semibold,
+  },
+  reminderBlock: {
+    paddingVertical: Space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+    gap: Space.md,
+  },
+  reminderTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Space.md,
+  },
+  reminderControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Space.sm,
+    flexWrap: 'wrap',
+  },
+  reminderControlsStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  hourOptions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+  },
+  hourPill: {
+    minHeight: 40,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.control,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  testNotifyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.control,
+    borderWidth: 1,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surfaceAlt,
+  },
+  testNotifyText: {
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.ink,
   },
   detailRow: {
     flexDirection: 'row',

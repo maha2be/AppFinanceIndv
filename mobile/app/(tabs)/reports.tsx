@@ -6,6 +6,7 @@ import { Fonts, Space } from '../../utils/theme';
 import { createThemedStyles, useTheme } from '../../services/theme';
 import { PeriodReport, Transaction } from '../../types';
 import { ReportSummaryCard } from '../../components/ReportSummaryCard';
+import { FinancialStabilityCharts } from '../../components/reports/FinancialStabilityCharts';
 import { TransactionCard } from '../../components/TransactionCard';
 import { Screen } from '../../components/ui/Screen';
 import { Segmented } from '../../components/ui/Segmented';
@@ -104,6 +105,11 @@ export default function ReportsScreen() {
 
       <FadeIn delay={60}>
         <ReportSummaryCard report={report} />
+      </FadeIn>
+
+      <FadeIn delay={90}>
+        <SectionHeader title="Kestabilan finansial" />
+        <FinancialStabilityCharts report={report} />
       </FadeIn>
 
       <FadeIn delay={120}>

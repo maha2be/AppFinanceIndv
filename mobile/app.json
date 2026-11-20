@@ -28,6 +28,7 @@
       ],
       "expo-splash-screen",
       "expo-status-bar",
+      "expo-notifications",
       [
         "expo-image-picker",
         {

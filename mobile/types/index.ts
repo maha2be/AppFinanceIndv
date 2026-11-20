@@ -139,6 +139,15 @@ export interface CategoryTotalItem {
   percentage: number;
 }
 
+export interface DailyFlowPoint {
+  date: string;
+  income: number;
+  expense: number;
+  investment: number;
+  net: number;
+  cumulative_net: number;
+}
+
 export interface PeriodReport {
   title: string;
   start_date: string;
@@ -150,6 +159,7 @@ export interface PeriodReport {
   average_expense: number;
   investment_percentage: number;
   top_expense_categories: CategoryTotalItem[];
+  timeline?: DailyFlowPoint[];
 }
 
 export interface CategoryBreakdown {

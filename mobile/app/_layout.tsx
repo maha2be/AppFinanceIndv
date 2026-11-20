@@ -5,6 +5,7 @@ import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Fonts } from '../utils/theme';
 import { createThemedStyles, hydrateTheme, useTheme } from '../services/theme';
+import { hydrateInstallmentReminders } from '../services/installmentNotifications';
 import { clearSession, hydrateSession, isAuthenticated, subscribeSession } from '../services/session';
 import {
   getAppLockState, handleAppLockState, hydrateAppLock, subscribeAppLock,
@@ -42,6 +43,7 @@ export default function RootLayout() {
     handleAppLockState(AppState.currentState || 'active');
     Promise.all([
       hydrateTheme(),
+      hydrateInstallmentReminders(),
       hydrateSession().then(() => hydrateAppLock()),
     ]).finally(() => {
       if (mounted) {
@@ -57,12 +59,28 @@ export default function RootLayout() {
     });
     const lifecycle = AppState.addEventListener('change', handleAppLockState);
 
+    let notificationSub: { remove?: () => void } | undefined;
+    if (Platform.OS !== 'web') {
+      try {
+        const Notifications = require('expo-notifications') as typeof import('expo-notifications');
+        notificationSub = Notifications.addNotificationResponseReceivedListener((response) => {
+          const route = response?.notification?.request?.content?.data?.route;
+          if (mounted && isAuthenticated() && route === '/debts') {
+            router.push('/debts');
+          }
+        });
+      } catch {
+        // Ignore when running without the notifications native module.
+      }
+    }
+
     return () => {
       mounted = false;
       unsubscribe();
       lifecycle.remove();
+      notificationSub?.remove?.();
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!authed || !appLock.enabled || Platform.OS === 'web') return;
