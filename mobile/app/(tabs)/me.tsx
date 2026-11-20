@@ -210,6 +210,15 @@ export default function MeScreen() {
             colors={colors}
           />
           <MenuRow
+            icon="cart-outline"
+            title="Daftar belanja"
+            hint="Rencana belanja bulanan, target budget, dan ceklis"
+            onPress={() => router.push('/shopping-lists')}
+            disabled={accountBusy}
+            styles={styles}
+            colors={colors}
+          />
+          <MenuRow
             icon="time-outline"
             title="Riwayat perubahan"
             hint="Jejak edit dan penghapusan transaksi"

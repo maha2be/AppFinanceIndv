@@ -252,3 +252,44 @@ export interface RecurringPayload {
   is_active?: boolean;
 }
 
+// --- Shopping List Types ---
+
+export interface ShoppingListItem {
+  id: number;
+  list_id: number;
+  user_id: number;
+  group_name: string;
+  name: string;
+  price?: number | null;
+  is_checked: boolean;
+  transaction_id?: number | null;
+  position: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ShoppingListSummary {
+  id: number;
+  user_id: number;
+  title: string;
+  budget_amount?: number | null;
+  notes?: string | null;
+  item_count: number;
+  checked_count: number;
+  planned_total: number;
+  checked_total: number;
+  unrecorded_checked_total: number;
+  recorded_total: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ShoppingListDetail extends ShoppingListSummary {
+  items: ShoppingListItem[];
+}
+
+export interface ShoppingListRecordExpenseResult {
+  transaction: Transaction;
+  shopping_list: ShoppingListDetail;
+}
+

@@ -429,3 +429,102 @@ class DebtSummaryResponse(BaseModel):
     active_debt_count: int
     active_receivable_count: int
     due_soon_count: int
+
+
+# --- Shopping List Schemas ---
+
+
+class ShoppingListItemCreate(BaseModel):
+    group_name: Optional[str] = Field("Umum", max_length=60)
+    name: str = Field(..., min_length=1, max_length=120)
+    price: Optional[int] = Field(None, ge=0)
+    is_checked: bool = False
+
+
+class ShoppingListItemUpdate(BaseModel):
+    group_name: Optional[str] = Field(None, max_length=60)
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    price: Optional[int] = Field(None, ge=0)
+    is_checked: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _require_any_field(self) -> "ShoppingListItemUpdate":
+        if not (self.model_fields_set & {"group_name", "name", "price", "is_checked"}):
+            raise ValueError("Minimal satu kolom item harus diisi.")
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("Nama item tidak boleh kosong.")
+        if "is_checked" in self.model_fields_set and self.is_checked is None:
+            raise ValueError("Status centang tidak valid.")
+        return self
+
+
+class ShoppingListCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    budget_amount: Optional[int] = Field(None, gt=0)
+    notes: Optional[str] = Field(None, max_length=1000)
+    items: list[ShoppingListItemCreate] = Field(default_factory=list, max_length=200)
+
+
+class ShoppingListUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+    budget_amount: Optional[int] = Field(None, gt=0)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+    @model_validator(mode="after")
+    def _require_any_field(self) -> "ShoppingListUpdate":
+        if not (self.model_fields_set & {"title", "budget_amount", "notes"}):
+            raise ValueError("Minimal satu kolom daftar harus diisi.")
+        if "title" in self.model_fields_set and self.title is None:
+            raise ValueError("Judul daftar belanja tidak boleh kosong.")
+        return self
+
+
+class ShoppingListDuplicateRequest(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+
+
+class ShoppingListRecordExpenseRequest(BaseModel):
+    transaction_date: Optional[date] = None
+
+
+class ShoppingListItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    list_id: int
+    user_id: int
+    group_name: str
+    name: str
+    price: Optional[int] = None
+    is_checked: bool
+    transaction_id: Optional[int] = None
+    position: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ShoppingListSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    title: str
+    budget_amount: Optional[int] = None
+    notes: Optional[str] = None
+    item_count: int
+    checked_count: int
+    planned_total: int
+    checked_total: int
+    unrecorded_checked_total: int
+    recorded_total: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ShoppingListDetailResponse(ShoppingListSummaryResponse):
+    items: list[ShoppingListItemResponse] = Field(default_factory=list)
+
+
+class ShoppingListRecordExpenseResponse(BaseModel):
+    transaction: TransactionResponse
+    shopping_list: ShoppingListDetailResponse

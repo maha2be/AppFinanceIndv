@@ -27,7 +27,7 @@ def _column_info(connection: sqlite3.Connection, table: str) -> dict[str, sqlite
 
 
 def test_schema_version_is_current() -> None:
-    assert SCHEMA_VERSION == 9
+    assert SCHEMA_VERSION == 10
 
 
 def test_password_reset_requests_table_has_expected_columns() -> None:

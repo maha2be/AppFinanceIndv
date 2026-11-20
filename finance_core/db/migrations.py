@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 from .postgres_schema import run_postgres_migrations
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def _create_core_tables(connection: sqlite3.Connection) -> None:
@@ -421,6 +421,53 @@ def _migration_9(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(connection, "users", "avatar_url", "TEXT")
 
 
+def _migration_10(connection: sqlite3.Connection) -> None:
+    """Add planned shopping lists and grouped checklist items."""
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS shopping_lists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            budget_amount INTEGER CHECK (budget_amount IS NULL OR budget_amount > 0),
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS shopping_list_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            list_id INTEGER NOT NULL REFERENCES shopping_lists(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            group_name TEXT NOT NULL DEFAULT 'Umum',
+            name TEXT NOT NULL,
+            price INTEGER CHECK (price IS NULL OR price >= 0),
+            is_checked INTEGER NOT NULL DEFAULT 0 CHECK (is_checked IN (0, 1)),
+            transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shopping_lists_user "
+        "ON shopping_lists (user_id, id DESC)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shopping_items_list "
+        "ON shopping_list_items (list_id, position ASC, id ASC)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_shopping_items_user "
+        "ON shopping_list_items (user_id, list_id)"
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migration_1,
     2: _migration_2,
@@ -431,6 +478,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     7: _migration_7,
     8: _migration_8,
     9: _migration_9,
+    10: _migration_10,
 }
 
 
