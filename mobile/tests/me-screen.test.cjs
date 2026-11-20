@@ -271,6 +271,7 @@ test('profile dependency failure shows its error and retry loads the account', a
 for (const [label, route] of [
   ['Transaksi berulang', '/recurring'],
   ['Hutang & piutang', '/debts'],
+  ['Daftar belanja', '/shopping-lists'],
   ['Riwayat perubahan', '/transaction-history'],
   ['Pengaturan', '/settings'],
 ]) {

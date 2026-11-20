@@ -20,6 +20,7 @@ from .routes.categories import router as categories_router
 from .routes.debts import router as debts_router
 from .routes.recurring import router as recurring_router
 from .routes.reports import router as reports_router
+from .routes.shopping_lists import router as shopping_lists_router
 from .routes.transactions import router as transactions_router
 from .scheduler import recurring_scheduler_loop
 
@@ -98,6 +99,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(reports_router)
     application.include_router(debts_router)
     application.include_router(recurring_router)
+    application.include_router(shopping_lists_router)
 
     @application.get("/", tags=["Health"])
     def health_check() -> dict[str, str]:
