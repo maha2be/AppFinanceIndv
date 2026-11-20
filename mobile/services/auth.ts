@@ -34,6 +34,14 @@ export const authApi = {
     return res.data;
   },
 
+  async updateProfile(params: {
+    first_name?: string;
+    avatar_url?: string | null;
+  }): Promise<User> {
+    const res = await api.patch<User>('/api/auth/me', params);
+    return res.data;
+  },
+
   async googleLogin(params: { idToken: string }): Promise<AuthResponse> {
     const res = await api.post<AuthResponse>('/api/auth/google', {
       id_token: params.idToken,

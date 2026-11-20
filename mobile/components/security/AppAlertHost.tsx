@@ -1,13 +1,16 @@
 import React, { useEffect, useSyncExternalStore } from 'react';
 import { BackHandler, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
-import { Colors, Space, Type } from '../../utils/theme';
+import { Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import {
   dismissAppAlert, getAppAlert, pressAppAlert, registerAppAlertHost, subscribeAppAlert,
 } from '../../services/appAlert';
 
 export function AppAlertHost({ host, active = true }: { host: string; active?: boolean }) {
   const dialog = useSyncExternalStore(subscribeAppAlert, getAppAlert, getAppAlert);
+  const theme = useTheme();
+  const styles = useStyles(theme);
   useEffect(() => active ? registerAppAlertHost(host) : undefined, [host, active]);
   useEffect(() => {
     if (!active || dialog?.host !== host) return;
@@ -34,10 +37,10 @@ export function AppAlertHost({ host, active = true }: { host: string; active?: b
     </View>
   );
 }
-const styles = StyleSheet.create({
-  cover: { ...StyleSheet.absoluteFill, zIndex: 200, backgroundColor: Colors.scrim },
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
+  cover: { ...StyleSheet.absoluteFill, zIndex: 200, backgroundColor: colors.scrim },
   scroll: { flexGrow: 1, justifyContent: 'center', padding: Space.lg },
-  panel: { padding: Space.lg, backgroundColor: Colors.paper, borderRadius: 10, gap: Space.md },
-  title: { ...Type.h2 },
-  body: { ...Type.body },
-});
+  panel: { padding: Space.lg, backgroundColor: colors.paper, borderRadius: 10, gap: Space.md },
+  title: { ...type.h2 },
+  body: { ...type.body },
+}));

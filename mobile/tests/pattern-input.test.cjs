@@ -351,6 +351,18 @@ function loadComponent(helperModule, React) {
     Type: token,
   };
 
+  const themeService = {
+    useTheme: () => ({
+      mode: 'light',
+      isDark: false,
+      colors: theme.Colors,
+      type: theme.Type,
+      shadow: token,
+      setThemeMode: async () => {},
+    }),
+    createThemedStyles: (factory) => (resolved) => factory(resolved),
+  };
+
   const reactNative = {
     View: 'View',
     Text: 'Text',
@@ -388,6 +400,8 @@ function loadComponent(helperModule, React) {
         return reactNative;
       case '../../utils/theme':
         return theme;
+      case '../../services/theme':
+        return themeService;
       case '../../utils/lockPattern':
         return helperModule;
       default:

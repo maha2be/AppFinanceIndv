@@ -8,7 +8,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { buildPageTokens, parsePageJump } from '../../utils/transactionBrowser';
 import { Sheet } from '../ui/Sheet';
 import { Button } from '../ui/Button';
@@ -36,6 +37,9 @@ export function TransactionPagination({
   const [jumpOpen, setJumpOpen] = useState(false);
   const [jumpText, setJumpText] = useState('');
   const [jumpError, setJumpError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const stripRef = useRef<{ scrollTo?: (options: { x?: number; y?: number; animated?: boolean }) => void } | null>(null);
   const stripWidthRef = useRef(0);
@@ -159,8 +163,8 @@ export function TransactionPagination({
                   keyboardType="number-pad"
                   returnKeyType="go"
                   placeholder={`1-${safeTotal}`}
-                  placeholderTextColor={Colors.inkMuted}
-                  selectionColor={Colors.ink}
+                  placeholderTextColor={colors.inkMuted}
+                  selectionColor={colors.ink}
                   accessibilityLabel="Masukkan nomor halaman"
                   style={styles.jumpInput}
                   autoFocus
@@ -181,7 +185,7 @@ export function TransactionPagination({
                   pressed && !disabled ? styles.buttonPressed : null,
                 ]}
               >
-                <Ionicons name="return-down-back" size={18} color={Colors.onInk} />
+                <Ionicons name="return-down-back" size={18} color={colors.onInk} />
               </Pressable>
             </View>
 
@@ -221,7 +225,7 @@ export function TransactionPagination({
               pressed && !disabled ? styles.buttonPressed : null,
             ]}
           >
-            <Ionicons name="chevron-back" size={18} color={Colors.ink} />
+            <Ionicons name="chevron-back" size={18} color={colors.ink} />
           </Pressable>
         ) : null}
 
@@ -306,7 +310,7 @@ export function TransactionPagination({
               pressed && !disabled ? styles.buttonPressed : null,
             ]}
           >
-            <Ionicons name="chevron-forward" size={18} color={Colors.ink} />
+            <Ionicons name="chevron-forward" size={18} color={colors.ink} />
           </Pressable>
         ) : null}
       </View>
@@ -314,7 +318,7 @@ export function TransactionPagination({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   container: {
     paddingTop: Space.lg,
     paddingBottom: Space.md,
@@ -341,8 +345,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.sm,
     borderRadius: Radius.control,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -352,8 +356,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.md,
     borderRadius: Radius.control,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -361,31 +365,31 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   tokenSelected: {
-    backgroundColor: Colors.ink,
-    borderColor: Colors.ink,
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
   },
   buttonDisabled: {
     opacity: 0.4,
   },
   buttonPressed: {
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
   },
   tokenText: {
     fontFamily: Fonts.medium,
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
   tokenTextSelected: {
     fontFamily: Fonts.semibold,
-    color: Colors.onInk,
+    color: colors.onInk,
   },
   ellipsisText: {
     fontFamily: Fonts.semibold,
     fontSize: 14,
     lineHeight: 18,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     letterSpacing: 1,
   },
   jumpBody: {
@@ -397,11 +401,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 19,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   jumpBounds: {
     fontFamily: Fonts.semibold,
-    color: Colors.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
   jumpRow: {
@@ -413,30 +417,30 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 48,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
+    borderColor: colors.lineStrong,
     borderRadius: Radius.control,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     paddingHorizontal: Space.md,
     justifyContent: 'center',
   },
   jumpInputWrapError: {
-    borderColor: Colors.danger,
+    borderColor: colors.danger,
   },
   jumpInput: {
     minHeight: 44,
     fontFamily: Fonts.semibold,
     fontSize: 16,
     lineHeight: 22,
-    color: Colors.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
   jumpSubmitButton: {
     minWidth: 48,
     minHeight: 48,
     borderRadius: Radius.control,
-    backgroundColor: Colors.ink,
+    backgroundColor: colors.ink,
     borderWidth: 1,
-    borderColor: Colors.ink,
+    borderColor: colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -444,11 +448,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.danger,
+    color: colors.danger,
   },
   jumpFooter: {
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
     paddingTop: Space.md,
   },
-});
+}));

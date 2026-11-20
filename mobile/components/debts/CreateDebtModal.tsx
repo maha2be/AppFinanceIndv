@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
-import { Colors, Fonts, Space } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { DebtType } from '../../types';
 import { debtApi } from '../../services/debts';
 import { describeApiError } from '../../services/auth';
@@ -18,11 +19,6 @@ interface CreateDebtModalProps {
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-const TYPE_ITEMS: ReadonlyArray<SegmentedItem<DebtType>> = [
-  { key: 'debt', label: 'Hutang', dotColor: Colors.debt },
-  { key: 'receivable', label: 'Piutang', dotColor: Colors.receivable },
-];
-
 export function CreateDebtModal({ visible, onClose, onCreated }: CreateDebtModalProps) {
   const [type, setType] = useState<DebtType>('debt');
   const [personName, setPersonName] = useState('');
@@ -32,6 +28,13 @@ export function CreateDebtModal({ visible, onClose, onCreated }: CreateDebtModal
   const [syncCash, setSyncCash] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+  const typeItems: ReadonlyArray<SegmentedItem<DebtType>> = [
+    { key: 'debt', label: 'Hutang', dotColor: colors.debt },
+    { key: 'receivable', label: 'Piutang', dotColor: colors.receivable },
+  ];
 
   const reset = () => {
     setPersonName('');
@@ -105,7 +108,7 @@ export function CreateDebtModal({ visible, onClose, onCreated }: CreateDebtModal
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Segmented items={TYPE_ITEMS} value={type} onChange={setType} label="Jenis catatan" />
+        <Segmented items={typeItems} value={type} onChange={setType} label="Jenis catatan" />
 
         {error ? (
           <Text style={styles.error} accessibilityLiveRegion="polite">
@@ -159,7 +162,7 @@ export function CreateDebtModal({ visible, onClose, onCreated }: CreateDebtModal
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   scroll: {
     flexGrow: 0,
     flexShrink: 1,
@@ -171,7 +174,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
     marginBottom: Space.md,
   },
-});
+}));

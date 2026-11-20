@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { QuickInputPreview } from '../types';
-import { Colors, Fonts, Radius, Space } from '../utils/theme';
+import { Fonts, Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { formatRupiah } from '../utils/formatRupiah';
 import { transactionApi } from '../services/transactions';
 import { describeApiError } from '../services/auth';
@@ -18,18 +19,6 @@ interface QuickInputBarProps {
   onSuccess?: () => void;
 }
 
-const TYPE_TONE = {
-  income: Colors.income,
-  expense: Colors.expense,
-  investment: Colors.investment,
-} as const;
-
-const TYPE_TINT = {
-  income: Colors.incomeTint,
-  expense: Colors.expenseTint,
-  investment: Colors.investmentTint,
-} as const;
-
 /** Free-text entry: parse on the fly, confirm inline. */
 export function QuickInputBar({ onSuccess }: QuickInputBarProps) {
   const [text, setText] = useState('');
@@ -37,6 +26,9 @@ export function QuickInputBar({ onSuccess }: QuickInputBarProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const handleTextChange = async (value: string) => {
     setText(value);
@@ -79,17 +71,27 @@ export function QuickInputBar({ onSuccess }: QuickInputBarProps) {
     }
   };
 
-  const tone = preview?.type ? TYPE_TONE[preview.type] : Colors.ink;
+  const typeTone = {
+    income: colors.income,
+    expense: colors.expense,
+    investment: colors.investment,
+  } as const;
+  const typeTint = {
+    income: colors.incomeTint,
+    expense: colors.expenseTint,
+    investment: colors.investmentTint,
+  } as const;
+  const tone = preview?.type ? typeTone[preview.type] : colors.ink;
 
   return (
     <View style={styles.container}>
       <View style={styles.inputRow}>
-        <Ionicons name="pencil-outline" size={16} color={Colors.inkMuted} />
+        <Ionicons name="pencil-outline" size={16} color={colors.inkMuted} />
         <TextInput
           value={text}
           onChangeText={handleTextChange}
           placeholder={'Coba "makan 25000" atau "gaji 5jt"'}
-          placeholderTextColor={Colors.inkMuted}
+          placeholderTextColor={colors.inkMuted}
           style={styles.input}
           returnKeyType="done"
           onSubmitEditing={handleSave}
@@ -97,7 +99,7 @@ export function QuickInputBar({ onSuccess }: QuickInputBarProps) {
           autoCorrect={false}
         />
         {loading ? (
-          <ActivityIndicator size="small" color={Colors.inkMuted} />
+          <ActivityIndicator size="small" color={colors.inkMuted} />
         ) : text.trim() ? (
           <Pressable
             onPress={() => {
@@ -109,29 +111,49 @@ export function QuickInputBar({ onSuccess }: QuickInputBarProps) {
             accessibilityLabel="Bersihkan input"
             style={styles.clear}
           >
-            <Ionicons name="close-circle" size={18} color={Colors.inkMuted} />
+            <Ionicons name="close-circle" size={18} color={colors.inkMuted} />
           </Pressable>
         ) : null}
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {preview?.is_valid ? (
+      {preview?.is_valid ? (() => {
+        const previewCategory = preview.category_name || preview.asset_name || 'Lainnya';
+        const previewAsset = preview.asset_name?.trim() || '';
+        const previewNote = preview.note?.trim() || '';
+        const previewDetails: string[] = [];
+        if (previewAsset && previewAsset.toLowerCase() !== previewCategory.toLowerCase()) {
+          previewDetails.push(previewAsset);
+        }
+        if (previewNote && previewNote.toLowerCase() !== previewAsset.toLowerCase()) {
+          previewDetails.push(previewNote);
+        }
+        const previewDetailText = previewDetails.join(' · ');
+
+        return (
         <View style={styles.preview}>
           <View style={styles.previewInfo}>
             <View
               style={[
                 styles.typeTag,
-                { backgroundColor: preview.type ? TYPE_TINT[preview.type] : Colors.inkTint },
+                { backgroundColor: preview.type ? typeTint[preview.type] : colors.inkTint },
               ]}
             >
               <Text style={[styles.typeTagText, { color: tone }]}>
                 {preview.type_label || preview.type}
               </Text>
             </View>
-            <Text style={styles.previewCategory} numberOfLines={1}>
-              {preview.category_name}
-            </Text>
+            <View style={styles.previewTextWrap}>
+              <Text style={styles.previewCategory} numberOfLines={1}>
+                {previewCategory}
+              </Text>
+              {previewDetailText ? (
+                <Text style={styles.previewDetail} numberOfLines={1}>
+                  {previewDetailText}
+                </Text>
+              ) : null}
+            </View>
             <Text style={styles.previewAmount}>{formatRupiah(preview.amount || 0)}</Text>
           </View>
 
@@ -144,18 +166,19 @@ export function QuickInputBar({ onSuccess }: QuickInputBarProps) {
             style={({ pressed }) => [styles.save, pressed && styles.pressed]}
           >
             {saving ? (
-              <ActivityIndicator size="small" color={Colors.onInk} />
+              <ActivityIndicator size="small" color={colors.onInk} />
             ) : (
-              <Ionicons name="arrow-forward" size={18} color={Colors.onInk} />
+              <Ionicons name="arrow-forward" size={18} color={colors.onInk} />
             )}
           </Pressable>
         </View>
-      ) : null}
+        );
+      })() : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   container: {
     marginBottom: Space.lg,
   },
@@ -165,7 +188,7 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     minHeight: 48,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.lineStrong,
+    borderBottomColor: colors.lineStrong,
   },
   input: {
     flex: 1,
@@ -173,7 +196,7 @@ const styles = StyleSheet.create({
     paddingVertical: Space.sm,
     fontFamily: Fonts.regular,
     fontSize: 15,
-    color: Colors.ink,
+    color: colors.ink,
   },
   clear: {
     width: 32,
@@ -186,7 +209,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.danger,
+    color: colors.danger,
   },
   preview: {
     flexDirection: 'row',
@@ -195,9 +218,9 @@ const styles = StyleSheet.create({
     marginTop: Space.md,
     paddingVertical: Space.sm,
     paddingHorizontal: Space.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.block,
   },
   previewInfo: {
@@ -219,29 +242,38 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.04,
   },
+  previewTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
   previewCategory: {
-    flexShrink: 1,
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.ink,
+    color: colors.ink,
+  },
+  previewDetail: {
+    fontFamily: Fonts.regular,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.inkMuted,
   },
   previewAmount: {
     fontFamily: Fonts.semibold,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.ink,
+    color: colors.ink,
     fontVariant: ['tabular-nums'],
   },
   save: {
     width: 44,
     height: 44,
     borderRadius: Radius.control,
-    backgroundColor: Colors.ink,
+    backgroundColor: colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
   },
   pressed: {
     opacity: 0.8,
   },
-});
+}));

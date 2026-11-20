@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space, Type } from '../utils/theme';
+import { Fonts, Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { useReducedMotion } from '../utils/motion';
 import { Screen } from '../components/ui/Screen';
 import { Input } from '../components/ui/Input';
@@ -50,6 +51,9 @@ function patternsMatch(left: readonly number[], right: readonly number[]): boole
 export default function AppLockSettingsScreen() {
   const reducedMotion = useReducedMotion();
   const lockState = useSyncExternalStore(subscribeAppLock, getAppLockState, getAppLockState);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   const [view, setView] = useState<ManagementView>('overview');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -555,7 +559,7 @@ export default function AppLockSettingsScreen() {
     : activeError;
   const errorNotice = notice ? (
     <View style={styles.errorNotice} accessibilityLiveRegion="polite">
-      <Ionicons name={inCooldown ? 'time-outline' : 'alert-circle-outline'} size={18} color={Colors.danger} accessible={false} />
+      <Ionicons name={inCooldown ? 'time-outline' : 'alert-circle-outline'} size={18} color={colors.danger} accessible={false} />
       <Text style={styles.errorText}>{notice}</Text>
     </View>
   ) : null;
@@ -588,14 +592,14 @@ export default function AppLockSettingsScreen() {
           accessibilityLabel="Kembali"
           accessibilityState={{ disabled: isBusy }}
         >
-          <Ionicons name="arrow-back" size={20} color={isBusy ? Colors.inkMuted : Colors.ink} accessible={false} />
+          <Ionicons name="arrow-back" size={20} color={isBusy ? colors.inkMuted : colors.ink} accessible={false} />
         </Pressable>
         <Text style={styles.title} accessibilityRole="header">{viewTitle}</Text>
       </View>
 
       {!lockState.ready ? (
         <View style={styles.loadingBlock} accessibilityState={{ busy: true }}>
-          <ActivityIndicator size="small" color={Colors.inkMuted} accessibilityLabel="Memuat pengaturan kunci aplikasi" />
+          <ActivityIndicator size="small" color={colors.inkMuted} accessibilityLabel="Memuat pengaturan kunci aplikasi" />
           <Text style={styles.body}>Memuat status keamanan perangkat...</Text>
         </View>
       ) : !lockState.supported ? (
@@ -626,7 +630,7 @@ export default function AppLockSettingsScreen() {
           <View style={styles.summary}>
             <View style={styles.summaryHeader}>
               <View style={[styles.statusIcon, lockState.enabled && styles.enabledIcon]} accessible={false} importantForAccessibility="no-hide-descendants">
-                <Ionicons name={lockState.enabled ? 'shield-checkmark-outline' : 'lock-open-outline'} size={22} color={lockState.enabled ? Colors.income : Colors.inkSoft} />
+                <Ionicons name={lockState.enabled ? 'shield-checkmark-outline' : 'lock-open-outline'} size={22} color={lockState.enabled ? colors.income : colors.inkSoft} />
               </View>
               <View style={styles.rowBody}>
                 <Text style={styles.summaryTitle}>{lockState.enabled ? 'Aktif' : 'Nonaktif'}</Text>
@@ -710,7 +714,7 @@ export default function AppLockSettingsScreen() {
                         <Text style={[styles.rowTitle, fieldsDisabled && styles.disabledText]}>{label}</Text>
                       </View>
                       <View style={styles.rowAccessory} accessible={false} importantForAccessibility="no-hide-descendants">
-                        <Ionicons name={selected ? 'radio-button-on-outline' : 'radio-button-off-outline'} size={20} color={Colors.inkSoft} />
+                        <Ionicons name={selected ? 'radio-button-on-outline' : 'radio-button-off-outline'} size={20} color={colors.inkSoft} />
                       </View>
                     </Pressable>
                   );
@@ -770,7 +774,7 @@ export default function AppLockSettingsScreen() {
           ) : (
             <>
               <View style={styles.warningNote}>
-                <Ionicons name="warning-outline" size={20} color={Colors.danger} accessible={false} />
+                <Ionicons name="warning-outline" size={20} color={colors.danger} accessible={false} />
                 <Text style={styles.warningText}>{view === 'remove-pattern' ? 'This removes only the pattern from this device. Your six-digit PIN stays active.' : 'This removes the PIN, pattern, and biometric settings from this device. Your financial records are not deleted.'}</Text>
               </View>
               <PinField label="PIN saat ini" value={currentPin} onChange={(text) => updatePin(text, 'current')} onSubmit={view === 'remove-pattern' ? handleRemovePatternPrompt : handleDisableLockPrompt} disabled={fieldsDisabled} />
@@ -793,6 +797,8 @@ function PinField({ label, accessibilityLabel = label, value, onChange, onSubmit
   onSubmit?: () => void;
   disabled: boolean;
 }) {
+  const theme = useTheme();
+  const styles = useStyles(theme);
   return (
     <Input
       label={label}
@@ -826,6 +832,9 @@ function LockButton({ title, onPress, reducedMotion, busy = false, disabled = fa
   secondary?: boolean;
   danger?: boolean;
 }) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   const inactive = disabled || busy;
   return (
     <Pressable
@@ -836,7 +845,7 @@ function LockButton({ title, onPress, reducedMotion, busy = false, disabled = fa
       accessibilityState={{ disabled: inactive, busy }}
       style={({ pressed }) => [styles.button, secondary && styles.secondaryButton, danger && styles.dangerButton, inactive && styles.inactiveButton, pressed && styles.pressed, pressed && !reducedMotion && styles.pressedScale]}
     >
-      {busy ? <ActivityIndicator size="small" color={secondary ? Colors.inkMuted : danger ? Colors.danger : Colors.onInk} accessible={false} /> : null}
+      {busy ? <ActivityIndicator size="small" color={secondary ? colors.inkMuted : danger ? colors.danger : colors.onInk} accessible={false} /> : null}
       <Text style={[styles.buttonText, secondary && styles.secondaryButtonText, danger && styles.dangerButtonText]}>{title}</Text>
     </Pressable>
   );
@@ -853,8 +862,11 @@ function ActionRow({ icon, title, hint, onPress, disabled, reducedMotion, busy =
   danger?: boolean;
   last?: boolean;
 }) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   const inactive = disabled || busy;
-  const color = danger ? Colors.danger : Colors.inkSoft;
+  const color = danger ? colors.danger : colors.inkSoft;
   return (
     <Pressable
       onPress={() => { if (!inactive) onPress(); }}
@@ -877,7 +889,7 @@ function ActionRow({ icon, title, hint, onPress, disabled, reducedMotion, busy =
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   screenContent: {
     width: '100%',
     maxWidth: 640,
@@ -899,7 +911,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.control,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
     flex: 1,
     minWidth: 0,
   },
@@ -912,16 +924,16 @@ const styles = StyleSheet.create({
     gap: Space.md,
   },
   focusTitle: {
-    ...Type.title,
+    ...type.title,
   },
   body: {
-    ...Type.body,
-    color: Colors.inkSoft,
+    ...type.body,
+    color: colors.inkSoft,
   },
   summary: {
     padding: Space.lg,
     borderRadius: Radius.block,
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     marginBottom: Space.xl,
   },
   summaryHeader: {
@@ -935,35 +947,35 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.inkTint,
+    backgroundColor: colors.inkTint,
     borderRadius: Radius.pill,
   },
   enabledIcon: {
-    backgroundColor: Colors.incomeTint,
+    backgroundColor: colors.incomeTint,
   },
   summaryTitle: {
-    ...Type.h2,
+    ...type.h2,
   },
   summaryText: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
     marginTop: Space.xs,
   },
   fallbackNote: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
     paddingTop: Space.md,
     marginTop: Space.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.lineStrong,
+    borderTopColor: colors.lineStrong,
   },
   section: {
     marginBottom: Space.xl,
   },
   sectionLabel: {
-    ...Type.caption,
+    ...type.caption,
     fontFamily: Fonts.semibold,
-    color: Colors.ink,
+    color: colors.ink,
     marginBottom: Space.xs,
   },
   actionRow: {
@@ -973,7 +985,7 @@ const styles = StyleSheet.create({
     minHeight: 64,
     paddingVertical: Space.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   rowIcon: {
     width: 24,
@@ -985,10 +997,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    ...Type.bodyStrong,
+    ...type.bodyStrong,
   },
   rowHint: {
-    ...Type.caption,
+    ...type.caption,
     marginTop: Space.xs,
   },
   rowAccessory: {
@@ -997,13 +1009,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   disabledText: {
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
   },
   lastRow: {
     borderBottomWidth: 0,
   },
   dangerArea: {
-    backgroundColor: Colors.dangerTint,
+    backgroundColor: colors.dangerTint,
     padding: Space.lg,
     borderRadius: Radius.block,
   },
@@ -1011,25 +1023,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Space.md,
-    backgroundColor: Colors.dangerTint,
+    backgroundColor: colors.dangerTint,
     padding: Space.lg,
     borderRadius: Radius.block,
   },
   warningText: {
-    ...Type.body,
-    color: Colors.danger,
+    ...type.body,
+    color: colors.danger,
     flex: 1,
     minWidth: 0,
   },
   methodNote: {
     padding: Space.md,
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: Radius.control,
   },
   stepIndicator: {
-    ...Type.caption,
+    ...type.caption,
     fontFamily: Fonts.semibold,
-    color: Colors.ink,
+    color: colors.ink,
   },
   errorNotice: {
     flexDirection: 'row',
@@ -1038,8 +1050,8 @@ const styles = StyleSheet.create({
     paddingVertical: Space.md,
   },
   errorText: {
-    ...Type.body,
-    color: Colors.danger,
+    ...type.body,
+    color: colors.danger,
     flex: 1,
     minWidth: 0,
     fontVariant: ['tabular-nums'],
@@ -1052,32 +1064,32 @@ const styles = StyleSheet.create({
     minHeight: 48,
     paddingHorizontal: Space.lg,
     paddingVertical: Space.md,
-    backgroundColor: Colors.ink,
+    backgroundColor: colors.ink,
     borderWidth: 1,
-    borderColor: Colors.ink,
+    borderColor: colors.ink,
     borderRadius: Radius.control,
   },
   buttonText: {
-    ...Type.bodyStrong,
+    ...type.bodyStrong,
     fontFamily: Fonts.semibold,
-    color: Colors.onInk,
+    color: colors.onInk,
     flexShrink: 1,
     minWidth: 0,
     textAlign: 'center',
   },
   secondaryButton: {
     backgroundColor: 'transparent',
-    borderColor: Colors.lineStrong,
+    borderColor: colors.lineStrong,
   },
   secondaryButtonText: {
-    color: Colors.ink,
+    color: colors.ink,
   },
   dangerButton: {
-    backgroundColor: Colors.dangerTint,
-    borderColor: Colors.danger,
+    backgroundColor: colors.dangerTint,
+    borderColor: colors.danger,
   },
   dangerButtonText: {
-    color: Colors.danger,
+    color: colors.danger,
   },
   inactiveButton: {
     opacity: 0.55,
@@ -1095,4 +1107,4 @@ const styles = StyleSheet.create({
     minHeight: 48,
     fontVariant: ['tabular-nums'],
   },
-});
+}));

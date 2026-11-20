@@ -8,7 +8,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { useTheme } from '../../services/theme';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'md' | 'lg';
@@ -39,6 +40,7 @@ export function Button({
   accessibilityHint,
 }: ButtonProps) {
   const scale = useRef(new Animated.Value(1)).current;
+  const { colors } = useTheme();
   const inactive = disabled || loading;
 
   const press = (to: number) =>
@@ -50,10 +52,10 @@ export function Button({
     }).start();
 
   const palette = {
-    primary: { bg: Colors.ink, fg: Colors.onInk, border: Colors.ink },
-    secondary: { bg: Colors.surface, fg: Colors.ink, border: Colors.line },
-    ghost: { bg: 'transparent', fg: Colors.ink, border: 'transparent' },
-    danger: { bg: Colors.dangerTint, fg: Colors.danger, border: 'rgba(163, 43, 43, 0.28)' },
+    primary: { bg: colors.ink, fg: colors.onInk, border: colors.ink },
+    secondary: { bg: colors.surface, fg: colors.ink, border: colors.line },
+    ghost: { bg: 'transparent', fg: colors.ink, border: 'transparent' },
+    danger: { bg: colors.dangerTint, fg: colors.danger, border: colors.dangerBorder },
   }[variant];
 
   return (

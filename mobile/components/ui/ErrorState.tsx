@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Button } from './Button';
 
 interface ErrorStateProps {
@@ -11,9 +12,12 @@ interface ErrorStateProps {
 
 /** Inline error panel: cause on one line, retry as the next action. */
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   return (
     <View style={styles.container} accessibilityLiveRegion="polite">
-      <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+      <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
       <Text style={styles.message}>{message}</Text>
       {onRetry ? (
         <Button
@@ -28,14 +32,14 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    backgroundColor: Colors.dangerTint,
+    backgroundColor: colors.dangerTint,
     borderWidth: 1,
-    borderColor: 'rgba(163, 43, 43, 0.22)',
+    borderColor: colors.dangerBorder,
     borderRadius: Radius.block,
     paddingVertical: Space.md,
     paddingHorizontal: Space.md,
@@ -46,10 +50,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
   },
   action: {
     paddingHorizontal: Space.md,
     minHeight: 36,
   },
-});
+}));

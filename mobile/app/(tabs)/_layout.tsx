@@ -3,10 +3,12 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts } from '../../utils/theme';
+import { Fonts } from '../../utils/theme';
+import { useTheme } from '../../services/theme';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const bottom = Platform.OS === 'web' ? 8 : Math.max(insets.bottom, 8);
 
   return (
@@ -15,15 +17,15 @@ export default function TabLayout() {
         headerShown: false,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          backgroundColor: Colors.surface,
+          backgroundColor: colors.surface,
           borderTopWidth: 1,
-          borderTopColor: Colors.line,
+          borderTopColor: colors.line,
           height: 56 + bottom,
           paddingTop: 6,
           paddingBottom: bottom,
         },
-        tabBarActiveTintColor: Colors.ink,
-        tabBarInactiveTintColor: Colors.inkMuted,
+        tabBarActiveTintColor: colors.ink,
+        tabBarInactiveTintColor: colors.inkMuted,
         tabBarLabelStyle: {
           fontFamily: Fonts.medium,
           fontSize: 10,
@@ -55,10 +57,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="me"
         options={{
-          title: 'Pengaturan',
-          tabBarIcon: ({ color }) => <Ionicons name="options-outline" size={21} color={color as string} />,
+          title: 'Saya',
+          tabBarIcon: ({ color }) => <Ionicons name="person-outline" size={21} color={color as string} />,
         }}
       />
     </Tabs>

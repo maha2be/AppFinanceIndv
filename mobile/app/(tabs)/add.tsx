@@ -2,7 +2,8 @@ import { AppAlert as Alert } from '../../services/appAlert';
 import React, { useState, useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { Colors, Fonts, Space, Type } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Category, TransactionType } from '../../types';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -16,12 +17,6 @@ import { transactionApi } from '../../services/transactions';
 import { describeApiError } from '../../services/auth';
 import { localTodayIso } from '../../utils/date';
 
-const TYPE_ITEMS: ReadonlyArray<SegmentedItem<TransactionType>> = [
-  { key: 'expense', label: 'Pengeluaran', dotColor: Colors.expense },
-  { key: 'income', label: 'Pemasukan', dotColor: Colors.income },
-  { key: 'investment', label: 'Investasi', dotColor: Colors.investment },
-];
-
 export default function AddTransactionScreen() {
   const [type, setType] = useState<TransactionType>('expense');
   const [categories, setCategories] = useState<Category[]>([]);
@@ -32,6 +27,14 @@ export default function AddTransactionScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+  const typeItems: ReadonlyArray<SegmentedItem<TransactionType>> = [
+    { key: 'expense', label: 'Pengeluaran', dotColor: colors.expense },
+    { key: 'income', label: 'Pemasukan', dotColor: colors.income },
+    { key: 'investment', label: 'Investasi', dotColor: colors.investment },
+  ];
 
   useEffect(() => {
     let active = true;
@@ -100,7 +103,7 @@ export default function AddTransactionScreen() {
     >
       <FadeIn>
         <Text style={styles.title}>Catat transaksi</Text>
-        <Segmented items={TYPE_ITEMS} value={type} onChange={setType} label="Jenis transaksi" />
+        <Segmented items={typeItems} value={type} onChange={setType} label="Jenis transaksi" />
       </FadeIn>
 
       {error ? (
@@ -171,9 +174,9 @@ export default function AddTransactionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   title: {
-    ...Type.h1,
+    ...type.h1,
     marginBottom: Space.lg,
   },
   amountField: {
@@ -186,7 +189,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     marginBottom: Space.xs,
   },
   chips: {
@@ -201,7 +204,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   footer: {
@@ -209,7 +212,7 @@ const styles = StyleSheet.create({
     paddingTop: Space.md,
     paddingBottom: Space.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
-    backgroundColor: Colors.paper,
+    borderTopColor: colors.line,
+    backgroundColor: colors.paper,
   },
-});
+}));

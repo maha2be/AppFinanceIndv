@@ -9,7 +9,8 @@ import {
   TransactionBrowserFilters,
   TransactionSort,
 } from '../types';
-import { Colors, Fonts, Radius, Space, Type } from '../utils/theme';
+import { Fonts, Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import {
   SORT_OPTIONS,
   buildTransactionPageQuery,
@@ -126,6 +127,9 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const mountedRef = useRef(true);
   const focusedRef = useRef(true);
@@ -555,7 +559,7 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
           accessibilityRole="button"
           accessibilityLabel="Kembali"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
 
         <Text style={styles.title} numberOfLines={1} accessibilityRole="header">
@@ -575,15 +579,15 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
       </View>
 
       <View style={styles.searchBar}>
-        <Ionicons name="search-outline" size={18} color={Colors.inkMuted} />
+        <Ionicons name="search-outline" size={18} color={colors.inkMuted} />
         <TextInput
           testID="transaction-search"
           value={searchText}
           onChangeText={handleSearchChange}
           onSubmitEditing={handleSearchSubmit}
           placeholder="Cari catatan, kategori, atau aset"
-          placeholderTextColor={Colors.inkMuted}
-          selectionColor={Colors.ink}
+          placeholderTextColor={colors.inkMuted}
+          selectionColor={colors.ink}
           returnKeyType="search"
           autoCapitalize="none"
           autoCorrect={false}
@@ -601,7 +605,7 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
             accessibilityRole="button"
             accessibilityLabel="Hapus pencarian"
           >
-            <Ionicons name="close-circle" size={18} color={Colors.inkSoft} />
+            <Ionicons name="close-circle" size={18} color={colors.inkSoft} />
           </Pressable>
         ) : null}
       </View>
@@ -622,7 +626,7 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
           <Ionicons
             name="options-outline"
             size={16}
-            color={filtersActive ? Colors.onInk : Colors.inkSoft}
+            color={filtersActive ? colors.onInk : colors.inkSoft}
           />
           <Text
             style={[
@@ -663,7 +667,7 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
             pressed ? styles.pressed : null,
           ]}
         >
-          <Ionicons name="swap-vertical-outline" size={16} color={Colors.inkSoft} />
+          <Ionicons name="swap-vertical-outline" size={16} color={colors.inkSoft} />
           <Text style={styles.controlButtonLabel}>Urutkan:</Text>
           <Text style={styles.controlButtonValue} numberOfLines={1}>
             {currentSortLabel}
@@ -771,9 +775,9 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor={Colors.ink}
-              colors={[Colors.ink]}
-              progressBackgroundColor={Colors.surface}
+              tintColor={colors.ink}
+              colors={[colors.ink]}
+              progressBackgroundColor={colors.surface}
             />
           ) : undefined
         }
@@ -824,7 +828,7 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
                     {option.label}
                   </Text>
                   {selected ? (
-                    <Ionicons name="checkmark" size={18} color={Colors.ink} />
+                    <Ionicons name="checkmark" size={18} color={colors.ink} />
                   ) : null}
                 </Pressable>
               );
@@ -836,7 +840,7 @@ export default function TransactionsScreen(props: TransactionsScreenProps = {}) 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   screenContent: {
     paddingBottom: 0,
   },
@@ -861,7 +865,7 @@ const styles = StyleSheet.create({
     marginLeft: -Space.xs,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
     flex: 1,
   },
   historyLink: {
@@ -874,7 +878,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     textDecorationLine: 'underline',
   },
   searchBar: {
@@ -883,9 +887,9 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     minHeight: 46,
     paddingHorizontal: Space.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
+    borderColor: colors.lineStrong,
     borderRadius: Radius.control,
     marginBottom: Space.sm,
   },
@@ -896,7 +900,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: Colors.ink,
+    color: colors.ink,
   },
   clearSearchButton: {
     width: 44,
@@ -916,45 +920,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.md,
     borderRadius: Radius.control,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.xs,
   },
   controlButtonActive: {
-    backgroundColor: Colors.ink,
-    borderColor: Colors.ink,
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
   },
   controlButtonText: {
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.ink,
+    color: colors.ink,
   },
   controlButtonTextActive: {
-    color: Colors.onInk,
+    color: colors.onInk,
   },
   filterBadge: {
     minWidth: 18,
     height: 18,
     borderRadius: 9,
     paddingHorizontal: 5,
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterBadgeActive: {
-    backgroundColor: Colors.onInk,
+    backgroundColor: colors.onInk,
   },
   filterBadgeText: {
     fontFamily: Fonts.semibold,
     fontSize: 11,
     lineHeight: 14,
-    color: Colors.ink,
+    color: colors.ink,
   },
   filterBadgeTextActive: {
-    color: Colors.ink,
+    color: colors.ink,
   },
   sortButton: {
     flex: 1,
@@ -963,13 +967,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   controlButtonValue: {
     fontFamily: Fonts.semibold,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.ink,
+    color: colors.ink,
     flexShrink: 1,
   },
   summaryBar: {
@@ -979,13 +983,13 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     paddingVertical: Space.xs,
     paddingHorizontal: Space.md,
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: Radius.control,
     marginBottom: Space.sm,
   },
   summaryText: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
     flex: 1,
   },
   inlineResetButton: {
@@ -998,12 +1002,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.ink,
+    color: colors.ink,
     textDecorationLine: 'underline',
   },
   resultRange: {
-    ...Type.caption,
-    color: Colors.inkMuted,
+    ...type.caption,
+    color: colors.inkMuted,
     marginBottom: Space.xs,
     fontVariant: ['tabular-nums'],
   },
@@ -1019,8 +1023,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.lg,
     borderRadius: Radius.control,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1028,7 +1032,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semibold,
     fontSize: 14,
     lineHeight: 19,
-    color: Colors.ink,
+    color: colors.ink,
   },
   paginationFooter: {
     paddingTop: Space.lg,
@@ -1045,17 +1049,17 @@ const styles = StyleSheet.create({
     paddingVertical: Space.sm,
     paddingHorizontal: Space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   sortOptionSelected: {
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: Radius.control,
   },
   sortOptionText: {
     fontFamily: Fonts.regular,
     fontSize: 15,
     lineHeight: 21,
-    color: Colors.ink,
+    color: colors.ink,
   },
   sortOptionTextSelected: {
     fontFamily: Fonts.semibold,
@@ -1063,4 +1067,4 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.75,
   },
-});
+}));

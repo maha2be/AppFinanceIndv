@@ -10,7 +10,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Motion, Radius, Shadow, Space } from '../../utils/theme';
+import { Fonts, Motion, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { useReducedMotion } from '../../utils/motion';
 import { getAppLockState, subscribeAppLock } from '../../services/appLock';
 import { clearSession, isAuthenticated, subscribeSession } from '../../services/session';
@@ -35,6 +36,9 @@ export function Sheet({ visible, onClose, title, children, footer, closeLabel = 
   const enter = useRef(new Animated.Value(0)).current;
   const lock = useSyncExternalStore(subscribeAppLock, getAppLockState, getAppLockState);
   const authenticated = useSyncExternalStore(subscribeSession, isAuthenticated, isAuthenticated);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   const gated = authenticated && (!lock.ready || lock.locked || lock.covered);
   const host = useId();
 
@@ -102,7 +106,7 @@ export function Sheet({ visible, onClose, title, children, footer, closeLabel = 
                 accessibilityRole="button"
                 accessibilityLabel={closeLabel}
               >
-                <Ionicons name="close" size={20} color={Colors.inkSoft} />
+                <Ionicons name="close" size={20} color={colors.inkSoft} />
               </Pressable>
             </View>
             <View style={styles.body}>{children}</View>
@@ -123,32 +127,32 @@ export function Sheet({ visible, onClose, title, children, footer, closeLabel = 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, shadow }) => StyleSheet.create({
   modalBody: { flex: 1 },
-  lockCover: { ...StyleSheet.absoluteFill, backgroundColor: Colors.paper, zIndex: 100 },
+  lockCover: { ...StyleSheet.absoluteFill, backgroundColor: colors.paper, zIndex: 100 },
   root: {
     flex: 1,
-    backgroundColor: Colors.scrim,
+    backgroundColor: colors.scrim,
   },
   dock: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   panel: {
-    backgroundColor: Colors.paper,
+    backgroundColor: colors.paper,
     borderTopLeftRadius: Radius.sheet,
     borderTopRightRadius: Radius.sheet,
     paddingHorizontal: Space.gutter,
     paddingBottom: Space.lg,
     maxHeight: '92%',
-    ...Shadow.sheet,
+    ...shadow.sheet,
   },
   handle: {
     alignSelf: 'center',
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.lineStrong,
+    backgroundColor: colors.lineStrong,
     marginTop: Space.sm,
     marginBottom: Space.sm,
   },
@@ -162,7 +166,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.serif,
     fontSize: 24,
     lineHeight: 29,
-    color: Colors.ink,
+    color: colors.ink,
     flex: 1,
   },
   close: {
@@ -177,8 +181,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
     paddingTop: Space.md,
     gap: Space.sm,
   },
-});
+}));

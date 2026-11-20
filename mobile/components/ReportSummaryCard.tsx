@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { PeriodReport } from '../types';
-import { Colors, Fonts, Space, Type } from '../utils/theme';
+import { Fonts, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { amountFontSize, formatRupiah } from '../utils/formatRupiah';
 import { Card } from './ui/Card';
 import { Amount } from './ui/Amount';
@@ -13,6 +14,9 @@ interface ReportSummaryCardProps {
 
 /** Hero balance block: one large serif figure, three semantic columns. */
 export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
+  const theme = useTheme();
+  const { colors, type } = theme;
+  const styles = useStyles(theme);
   if (!report) {
     return (
       <Card style={styles.card}>
@@ -40,9 +44,9 @@ export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
       <Text style={styles.eyebrow}>{report.title}</Text>
       <Text
         style={[
-          Type.hero,
+          type.hero,
           { fontSize: amountFontSize(figure), lineHeight: amountFontSize(figure) + 4 },
-          { color: positive ? Colors.income : Colors.expense },
+          { color: positive ? colors.income : colors.expense },
         ]}
         numberOfLines={1}
         accessibilityLabel={`Sisa bersih ${figure}`}
@@ -51,11 +55,11 @@ export function ReportSummaryCard({ report }: ReportSummaryCardProps) {
       </Text>
 
       <View style={styles.statsRow}>
-        <Stat label="Pemasukan" value={report.total_income} tone="income" />
+        <Stat label="Pemasukan" value={report.total_income} tone="income" styles={styles} />
         <View style={styles.divider} />
-        <Stat label="Pengeluaran" value={report.total_expense} tone="expense" />
+        <Stat label="Pengeluaran" value={report.total_expense} tone="expense" styles={styles} />
         <View style={styles.divider} />
-        <Stat label="Investasi" value={report.total_investment} tone="investment" />
+        <Stat label="Investasi" value={report.total_investment} tone="investment" styles={styles} />
       </View>
     </Card>
   );
@@ -65,10 +69,12 @@ function Stat({
   label,
   value,
   tone,
+  styles,
 }: {
   label: string;
   value: number;
   tone: 'income' | 'expense' | 'investment';
+  styles: ReturnType<typeof useStyles>;
 }) {
   return (
     <View style={styles.stat}>
@@ -85,14 +91,14 @@ function Stat({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   card: {
     paddingVertical: Space.xl,
     paddingHorizontal: Space.lg,
     marginBottom: Space.lg,
   },
   eyebrow: {
-    ...Type.micro,
+    ...type.micro,
     textTransform: 'uppercase',
     marginBottom: Space.sm,
   },
@@ -106,7 +112,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
     paddingTop: Space.md,
     marginTop: Space.md,
   },
@@ -117,12 +123,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 11,
     lineHeight: 15,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginBottom: Space.xs,
   },
   divider: {
     width: 1,
-    backgroundColor: Colors.line,
+    backgroundColor: colors.line,
     marginHorizontal: Space.md,
   },
-});
+}));

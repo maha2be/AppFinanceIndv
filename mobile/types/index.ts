@@ -9,6 +9,7 @@ export interface User {
   id: number;
   email?: string | null;
   first_name?: string | null;
+  avatar_url?: string | null;
   timezone: string;
   currency: string;
   created_at?: string;

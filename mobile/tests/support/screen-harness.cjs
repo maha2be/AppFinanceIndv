@@ -90,6 +90,19 @@ function createHooks() {
     }
   }
 
+  function useMemo(factory, deps) {
+    const index = cursor;
+    cursor += 1;
+    const slot = hooks[index];
+    if (!slot || slot.kind !== 'memo') {
+      hooks[index] = { kind: 'memo', value: factory(), deps };
+    } else if (!sameDeps(slot.deps, deps)) {
+      slot.value = factory();
+      slot.deps = deps;
+    }
+    return hooks[index].value;
+  }
+
   function useSyncExternalStore(_subscribe, getSnapshot) {
     return getSnapshot();
   }
@@ -119,6 +132,7 @@ function createHooks() {
     useRef,
     useCallback,
     useEffect,
+    useMemo,
     useSyncExternalStore,
     get dirty() {
       return dirty;
@@ -416,6 +430,7 @@ function createHarness({ componentPath, modules, props = {}, mountProps, moduleF
     useRef: hooks.useRef,
     useCallback: hooks.useCallback,
     useEffect: hooks.useEffect,
+    useMemo: hooks.useMemo,
     useSyncExternalStore: hooks.useSyncExternalStore,
     createElement: host.h,
   };
@@ -469,12 +484,35 @@ function createHarness({ componentPath, modules, props = {}, mountProps, moduleF
       ? { ...baseModules[name], ...value }
       : value;
   }
+  const defaultThemeService = {
+    useTheme: () => ({
+      mode: 'light',
+      isDark: false,
+      colors: tokenProxy(),
+      type: tokenProxy(),
+      shadow: tokenProxy(),
+      setThemeMode: async () => {},
+    }),
+    createThemedStyles: (factory) => (theme) => factory(theme || {
+      mode: 'light',
+      isDark: false,
+      colors: tokenProxy(),
+      type: tokenProxy(),
+      shadow: tokenProxy(),
+    }),
+  };
+
+  const mergedFallbacks = [
+    ...moduleFallback,
+    [/^(?:\.\.\/)+services\/theme$/, defaultThemeService],
+  ];
+
   const Component = loadComponent(
     componentPath,
     mergedModules,
     hooks,
     host.h,
-    moduleFallback,
+    mergedFallbacks,
     exportName
   );
   let currentProps = { ...props };

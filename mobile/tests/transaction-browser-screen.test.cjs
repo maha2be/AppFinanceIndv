@@ -136,6 +136,17 @@ const RealSectionHeader = loadComponentModule('components/ui/SectionHeader.tsx',
       View: 'View',
       StyleSheet: { create: (styles) => styles },
     },
+    '../../services/theme': {
+      useTheme: () => ({
+        mode: 'light',
+        isDark: false,
+        colors: { ink: '#171A16', inkSoft: '#565A52' },
+        type: {},
+        shadow: {},
+        setThemeMode: async () => {},
+      }),
+      createThemedStyles: (factory) => (theme) => factory(theme),
+    },
   },
   exportName: 'SectionHeader',
 });

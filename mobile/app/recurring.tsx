@@ -3,7 +3,8 @@ import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Space, Type } from '../utils/theme';
+import { Fonts, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { RecurringTransaction, TransactionType } from '../types';
 import { recurringApi } from '../services/recurring';
 import { describeApiError } from '../services/auth';
@@ -24,12 +25,6 @@ const TYPE_TONE: Record<TransactionType, 'income' | 'expense' | 'investment'> = 
   investment: 'investment',
 };
 
-const TYPE_ACCENT: Record<TransactionType, string> = {
-  income: Colors.income,
-  expense: Colors.expense,
-  investment: Colors.investment,
-};
-
 export default function RecurringScreen() {
   const [items, setItems] = useState<RecurringTransaction[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +32,9 @@ export default function RecurringScreen() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [selected, setSelected] = useState<RecurringTransaction | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const loadData = useCallback(async () => {
     try {
@@ -105,7 +103,7 @@ export default function RecurringScreen() {
           accessibilityRole="button"
           accessibilityLabel="Kembali"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
         <Text style={styles.title}>Transaksi berulang</Text>
       </View>
@@ -170,7 +168,15 @@ function RecurringRow({
   onPress: () => void;
   onToggle: () => void;
 }) {
-  const accent = TYPE_ACCENT[item.type];
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+  const typeAccent: Record<TransactionType, string> = {
+    income: colors.income,
+    expense: colors.expense,
+    investment: colors.investment,
+  };
+  const accent = typeAccent[item.type];
   const active = item.is_active;
 
   return (
@@ -182,7 +188,7 @@ function RecurringRow({
         style={({ pressed }) => [styles.mainPress, pressed ? styles.pressed : null]}
       >
         <View style={styles.rowMain}>
-          <View style={[styles.dot, { backgroundColor: active ? accent : Colors.lineStrong }]} />
+          <View style={[styles.dot, { backgroundColor: active ? accent : colors.lineStrong }]} />
           <View style={styles.rowBody}>
             <Text style={[styles.rowTitle, !active && styles.inactiveText]} numberOfLines={1}>
               {recurringTitle(item.type, item.category_name, item.note)}
@@ -198,7 +204,7 @@ function RecurringRow({
           </View>
           <View style={styles.rowAmount}>
             <Amount value={item.amount} tone={TYPE_TONE[item.type]} />
-            <Text style={[styles.status, { color: active ? accent : Colors.inkMuted }]}>
+            <Text style={[styles.status, { color: active ? accent : colors.inkMuted }]}>
               {active ? 'Aktif' : 'Nonaktif'}
             </Text>
           </View>
@@ -211,9 +217,9 @@ function RecurringRow({
           value={active}
           onValueChange={onToggle}
           disabled={busy}
-          trackColor={{ false: Colors.lineStrong, true: Colors.inkSoft }}
-          thumbColor={Colors.surface}
-          ios_backgroundColor={Colors.lineStrong}
+          trackColor={{ false: colors.lineStrong, true: colors.inkSoft }}
+          thumbColor={colors.surface}
+          ios_backgroundColor={colors.lineStrong}
           accessibilityLabel={active ? 'Nonaktifkan jadwal' : 'Aktifkan jadwal'}
         />
       </View>
@@ -221,7 +227,7 @@ function RecurringRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -236,10 +242,10 @@ const styles = StyleSheet.create({
     marginLeft: -Space.sm,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
   },
   intro: {
-    ...Type.caption,
+    ...type.caption,
     marginBottom: Space.lg,
     maxWidth: 360,
   },
@@ -250,7 +256,7 @@ const styles = StyleSheet.create({
     paddingVertical: Space.md,
     gap: Space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   pressed: {
     opacity: 0.7,
@@ -277,23 +283,23 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 15,
     lineHeight: 20,
-    color: Colors.ink,
+    color: colors.ink,
   },
   inactiveText: {
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   rowMeta: {
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginTop: 2,
   },
   rowNext: {
     fontFamily: Fonts.regular,
     fontSize: 11,
     lineHeight: 15,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginTop: 2,
   },
   rowAmount: {
@@ -317,14 +323,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 11,
     lineHeight: 15,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
   },
   footer: {
     paddingHorizontal: Space.gutter,
     paddingTop: Space.md,
     paddingBottom: Space.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
-    backgroundColor: Colors.paper,
+    borderTopColor: colors.line,
+    backgroundColor: colors.paper,
   },
-});
+}));

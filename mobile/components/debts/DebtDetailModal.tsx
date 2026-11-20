@@ -2,7 +2,8 @@ import { AppAlert as Alert } from '../../services/appAlert';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Space, Type } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Debt, DebtPayment } from '../../types';
 import { debtApi } from '../../services/debts';
 import { describeApiError } from '../../services/auth';
@@ -30,6 +31,9 @@ export function DebtDetailModal({ debt, visible, onClose, onChanged }: DebtDetai
   const [payNote, setPayNote] = useState('');
   const [payLoading, setPayLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const loadPayments = useCallback(async (debtId: number) => {
     try {
@@ -55,7 +59,7 @@ export function DebtDetailModal({ debt, visible, onClose, onChanged }: DebtDetai
     return null;
   }
 
-  const accent = record.type === 'debt' ? Colors.debt : Colors.receivable;
+  const accent = record.type === 'debt' ? colors.debt : colors.receivable;
   const tone = record.type === 'debt' ? 'debt' : 'receivable';
   const paidPercentage =
     record.total_amount > 0 ? Math.min((record.paid_amount / record.total_amount) * 100, 100) : 0;
@@ -153,19 +157,19 @@ export function DebtDetailModal({ debt, visible, onClose, onChanged }: DebtDetai
         ) : null}
 
         <View style={styles.identityRow}>
-          <View style={[styles.tag, { backgroundColor: record.type === 'debt' ? Colors.debtTint : Colors.receivableTint }]}>
+          <View style={[styles.tag, { backgroundColor: record.type === 'debt' ? colors.debtTint : colors.receivableTint }]}>
             <Text style={[styles.tagText, { color: accent }]}>
               {record.type === 'debt' ? 'HUTANG' : 'PIUTANG'}
             </Text>
           </View>
           {settled ? (
-            <View style={[styles.tag, { backgroundColor: Colors.incomeTint }]}>
-              <Text style={[styles.tagText, { color: Colors.income }]}>LUNAS</Text>
+            <View style={[styles.tag, { backgroundColor: colors.incomeTint }]}>
+              <Text style={[styles.tagText, { color: colors.income }]}>LUNAS</Text>
             </View>
           ) : null}
           {record.cash_synced ? (
-            <View style={[styles.tag, { backgroundColor: Colors.inkTint }]}>
-              <Text style={[styles.tagText, { color: Colors.inkSoft }]}>KAS TERSINKRON</Text>
+            <View style={[styles.tag, { backgroundColor: colors.inkTint }]}>
+              <Text style={[styles.tagText, { color: colors.inkSoft }]}>KAS TERSINKRON</Text>
             </View>
           ) : null}
         </View>
@@ -188,7 +192,7 @@ export function DebtDetailModal({ debt, visible, onClose, onChanged }: DebtDetai
             <Text style={styles.progressLabel}>Progress</Text>
             <Text style={styles.progressValue}>{Math.round(paidPercentage)}%</Text>
           </View>
-          <Progress value={paidPercentage} color={settled ? Colors.income : accent} />
+          <Progress value={paidPercentage} color={settled ? colors.income : accent} />
           <View style={styles.splitRow}>
             <Text style={styles.splitText}>Dibayar {formatRupiah(record.paid_amount)}</Text>
             <Text style={styles.splitText}>
@@ -199,13 +203,13 @@ export function DebtDetailModal({ debt, visible, onClose, onChanged }: DebtDetai
 
         {record.due_date ? (
           <View style={styles.infoRow}>
-            <Ionicons name="calendar-outline" size={15} color={Colors.inkMuted} />
+            <Ionicons name="calendar-outline" size={15} color={colors.inkMuted} />
             <Text style={styles.infoText}>Jatuh tempo {formatDateIndo(record.due_date)}</Text>
           </View>
         ) : null}
         {record.note ? (
           <View style={styles.infoRow}>
-            <Ionicons name="document-text-outline" size={15} color={Colors.inkMuted} />
+            <Ionicons name="document-text-outline" size={15} color={colors.inkMuted} />
             <Text style={styles.infoText}>{record.note}</Text>
           </View>
         ) : null}
@@ -270,7 +274,7 @@ export function DebtDetailModal({ debt, visible, onClose, onChanged }: DebtDetai
           accessibilityRole="button"
           accessibilityLabel="Hapus hutang atau piutang"
         >
-          <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+          <Ionicons name="trash-outline" size={16} color={colors.danger} />
           <Text style={styles.deleteText}>Hapus catatan</Text>
         </Pressable>
       </ScrollView>
@@ -278,7 +282,7 @@ export function DebtDetailModal({ debt, visible, onClose, onChanged }: DebtDetai
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   scroll: {
     flexGrow: 0,
     flexShrink: 1,
@@ -291,7 +295,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   identityRow: {
@@ -311,8 +315,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.06,
   },
   person: {
-    ...Type.h3,
-    color: Colors.ink,
+    ...type.h3,
+    color: colors.ink,
   },
   total: {
     fontFamily: Fonts.serif,
@@ -326,19 +330,19 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     paddingBottom: Space.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   progressLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   progressLabel: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
   },
   progressValue: {
-    ...Type.caption,
-    color: Colors.ink,
+    ...type.caption,
+    color: colors.ink,
     fontFamily: Fonts.semibold,
   },
   splitRow: {
@@ -346,7 +350,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   splitText: {
-    ...Type.micro,
+    ...type.micro,
   },
   infoRow: {
     flexDirection: 'row',
@@ -354,11 +358,11 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     paddingVertical: Space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   infoText: {
-    ...Type.body,
-    color: Colors.inkSoft,
+    ...type.body,
+    color: colors.inkSoft,
     flex: 1,
   },
   actions: {
@@ -376,19 +380,19 @@ const styles = StyleSheet.create({
     marginTop: Space.lg,
   },
   cardTitle: {
-    ...Type.title,
+    ...type.title,
     marginBottom: Space.md,
   },
   sectionTitle: {
-    ...Type.title,
+    ...type.title,
     marginTop: Space.xl,
     marginBottom: Space.sm,
   },
   emptyPayments: {
-    ...Type.caption,
+    ...type.caption,
     paddingVertical: Space.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
   },
   paymentRow: {
     flexDirection: 'row',
@@ -397,17 +401,17 @@ const styles = StyleSheet.create({
     gap: Space.md,
     paddingVertical: Space.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
   },
   paymentBody: {
     flex: 1,
     minWidth: 0,
   },
   paymentNote: {
-    ...Type.bodyStrong,
+    ...type.bodyStrong,
   },
   paymentDate: {
-    ...Type.micro,
+    ...type.micro,
     marginTop: 2,
   },
   deleteRow: {
@@ -422,6 +426,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
   },
-});
+}));

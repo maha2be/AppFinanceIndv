@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Space, Type } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { PeriodReport, Transaction, User, DebtSummary } from '../../types';
 import { ReportSummaryCard } from '../../components/ReportSummaryCard';
 import { QuickInputBar } from '../../components/QuickInputBar';
@@ -30,6 +31,9 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const requestSeqRef = useRef(0);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -134,13 +138,13 @@ export default function DashboardScreen() {
           style={({ pressed }) => [styles.recurringRow, pressed ? styles.pressed : null]}
         >
           <View style={styles.recurringIcon}>
-            <Ionicons name="repeat" size={17} color={Colors.inkSoft} />
+            <Ionicons name="repeat" size={17} color={colors.inkSoft} />
           </View>
           <View style={styles.recurringBody}>
             <Text style={styles.recurringTitle}>Transaksi berulang</Text>
             <Text style={styles.recurringHint}>Atur jadwal mingguan atau bulanan</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={Colors.inkMuted} />
+          <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
         </Pressable>
       </FadeIn>
 
@@ -180,23 +184,23 @@ export default function DashboardScreen() {
           accessibilityLabel="Riwayat perubahan"
           style={({ pressed }) => [styles.auditLinkRow, pressed ? styles.pressed : null]}
         >
-          <Ionicons name="time-outline" size={16} color={Colors.inkSoft} />
+          <Ionicons name="time-outline" size={16} color={colors.inkSoft} />
           <Text style={styles.auditLinkText}>Riwayat perubahan</Text>
-          <Ionicons name="chevron-forward" size={15} color={Colors.inkMuted} />
+          <Ionicons name="chevron-forward" size={15} color={colors.inkMuted} />
         </Pressable>
       </FadeIn>
     </Screen>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   date: {
-    ...Type.micro,
+    ...type.micro,
     textTransform: 'uppercase',
     marginBottom: Space.xs,
   },
   greeting: {
-    ...Type.h1,
+    ...type.h1,
     marginBottom: Space.lg,
   },
   recurringRow: {
@@ -206,13 +210,13 @@ const styles = StyleSheet.create({
     minHeight: 56,
     paddingVertical: Space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   recurringIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -221,11 +225,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   recurringTitle: {
-    ...Type.bodyStrong,
-    color: Colors.ink,
+    ...type.bodyStrong,
+    color: colors.ink,
   },
   recurringHint: {
-    ...Type.caption,
+    ...type.caption,
     marginTop: 2,
   },
   auditLinkRow: {
@@ -240,10 +244,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     flex: 1,
   },
   pressed: {
     opacity: 0.85,
   },
-});
+}));

@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space, Type } from '../utils/theme';
+import { Fonts, Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { TransactionHistoryEntry, TransactionType } from '../types';
 import { transactionApi } from '../services/transactions';
 import { authApi, describeApiError } from '../services/auth';
@@ -55,6 +56,9 @@ export default function TransactionHistoryScreen() {
   const loadingMoreRef = useRef(false);
   const loadingInitialRef = useRef(false);
   const nextOffsetRef = useRef(0);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -176,7 +180,7 @@ export default function TransactionHistoryScreen() {
           accessibilityRole="button"
           accessibilityLabel="Kembali"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
         <View style={styles.headerTitles}>
           <Text style={styles.title} numberOfLines={1}>
@@ -275,6 +279,9 @@ function HistoryRow({
   userTimezone: string | null;
   onOpenTransaction?: () => void;
 }) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   const snapshot = entry.after ?? entry.before;
   const isDelete = entry.action === 'delete';
   const changes = describeHistoryChanges(entry);
@@ -289,13 +296,13 @@ function HistoryRow({
           <View
             style={[
               styles.actionBadge,
-              { backgroundColor: isDelete ? Colors.dangerTint : Colors.inkTint },
+              { backgroundColor: isDelete ? colors.dangerTint : colors.inkTint },
             ]}
           >
             <Text
               style={[
                 styles.actionBadgeText,
-                { color: isDelete ? Colors.danger : Colors.ink },
+                { color: isDelete ? colors.danger : colors.ink },
               ]}
             >
               {historyActionLabel(entry.action).toUpperCase()}
@@ -316,7 +323,13 @@ function HistoryRow({
             {title}
           </Text>
           <Text style={styles.rowSub}>
-            {transactionTypeLabel(snapshot.type)} · {formatDateIndo(snapshot.transaction_date)}
+            {[
+              transactionTypeLabel(snapshot.type),
+              snapshot.asset_name,
+              formatDateIndo(snapshot.transaction_date),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </Text>
         </View>
         <Amount value={sign * snapshot.amount} tone={tone} signed />
@@ -328,16 +341,18 @@ function HistoryRow({
           <SnapshotDetailLine
             label="Kategori"
             value={entry.before.category_name?.trim() || 'Tanpa kategori'}
+            styles={styles}
           />
           <SnapshotDetailLine
             label="Tanggal"
             value={formatDateIndo(entry.before.transaction_date)}
+            styles={styles}
           />
           {entry.before.asset_name ? (
-            <SnapshotDetailLine label="Aset" value={entry.before.asset_name} />
+            <SnapshotDetailLine label="Aset" value={entry.before.asset_name} styles={styles} />
           ) : null}
           {entry.before.note ? (
-            <SnapshotDetailLine label="Catatan" value={entry.before.note} />
+            <SnapshotDetailLine label="Catatan" value={entry.before.note} styles={styles} />
           ) : null}
         </View>
       ) : changes.length > 0 ? (
@@ -364,14 +379,14 @@ function HistoryRow({
           accessibilityLabel={`Buka detail transaksi ${title}`}
         >
           <Text style={styles.openLinkText}>Buka transaksi</Text>
-          <Ionicons name="chevron-forward" size={14} color={Colors.inkSoft} />
+          <Ionicons name="chevron-forward" size={14} color={colors.inkSoft} />
         </Pressable>
       ) : null}
     </View>
   );
 }
 
-function SnapshotDetailLine({ label, value }: { label: string; value: string }) {
+function SnapshotDetailLine({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof useStyles> }) {
   return (
     <View style={styles.snapshotLine}>
       <Text style={styles.snapshotLabel}>{label}</Text>
@@ -380,7 +395,7 @@ function SnapshotDetailLine({ label, value }: { label: string; value: string }) 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -399,10 +414,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
   },
   subtitle: {
-    ...Type.caption,
+    ...type.caption,
     marginTop: 2,
   },
   allAction: {
@@ -415,10 +430,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   intro: {
-    ...Type.caption,
+    ...type.caption,
     marginBottom: Space.lg,
   },
   loadingBlock: {
@@ -430,7 +445,7 @@ const styles = StyleSheet.create({
   row: {
     paddingVertical: Space.lg,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
     gap: Space.sm,
   },
   rowTop: {
@@ -459,11 +474,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.06,
   },
   sourceMeta: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
   },
   timestamp: {
-    ...Type.micro,
+    ...type.micro,
     letterSpacing: 0,
   },
   summaryRow: {
@@ -477,16 +492,16 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    ...Type.bodyStrong,
+    ...type.bodyStrong,
   },
   rowSub: {
-    ...Type.caption,
+    ...type.caption,
     marginTop: 2,
   },
   diffBox: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.control,
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,
@@ -499,37 +514,37 @@ const styles = StyleSheet.create({
     gap: Space.md,
   },
   diffLabel: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
     minWidth: 68,
   },
   diffValues: {
-    ...Type.caption,
-    color: Colors.ink,
+    ...type.caption,
+    color: colors.ink,
     flex: 1,
     textAlign: 'right',
   },
   diffBefore: {
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
   },
   diffArrow: {
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
   },
   diffAfter: {
     fontFamily: Fonts.medium,
-    color: Colors.ink,
+    color: colors.ink,
   },
   snapshotBox: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.control,
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,
     gap: Space.xs,
   },
   snapshotHeading: {
-    ...Type.micro,
+    ...type.micro,
     letterSpacing: 0.04,
     marginBottom: 2,
   },
@@ -540,12 +555,12 @@ const styles = StyleSheet.create({
     gap: Space.md,
   },
   snapshotLabel: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
   },
   snapshotValue: {
-    ...Type.caption,
-    color: Colors.ink,
+    ...type.caption,
+    color: colors.ink,
     flex: 1,
     textAlign: 'right',
   },
@@ -561,7 +576,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   pressed: {
     opacity: 0.7,
@@ -573,4 +588,4 @@ const styles = StyleSheet.create({
     paddingTop: Space.lg,
     paddingBottom: Space.md,
   },
-});
+}));

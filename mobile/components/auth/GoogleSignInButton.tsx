@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space, Type } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Button } from '../ui/Button';
 
 interface GoogleSignInButtonProps {
@@ -24,6 +25,7 @@ export function GoogleSignInButton({
   loading = false,
   disabled = false,
 }: GoogleSignInButtonProps) {
+  const { colors } = useTheme();
   return (
     <View style={styles.wrap}>
       <Button
@@ -35,7 +37,7 @@ export function GoogleSignInButton({
         onPress={onPress}
       />
       <View style={styles.mark} pointerEvents="none">
-        <Ionicons name="logo-google" size={17} color={Colors.inkSoft} />
+        <Ionicons name="logo-google" size={17} color={colors.inkSoft} />
       </View>
     </View>
   );
@@ -55,7 +57,7 @@ const styles = StyleSheet.create({
   },
 });
 
-export const googleSeparatorStyles = StyleSheet.create({
+const useSeparatorStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -65,25 +67,23 @@ export const googleSeparatorStyles = StyleSheet.create({
   rule: {
     flex: 1,
     height: 1,
-    backgroundColor: Colors.line,
+    backgroundColor: colors.line,
   },
   label: {
-    ...Type.micro,
+    ...type.micro,
     fontFamily: Fonts.medium,
     textTransform: 'uppercase',
   },
-  note: {
-    ...Type.caption,
-    marginTop: Space.sm,
-  },
-});
+}));
 
 export function GoogleSeparator({ label = 'atau' }: { label?: string }) {
+  const theme = useTheme();
+  const separatorStyles = useSeparatorStyles(theme);
   return (
-    <View style={googleSeparatorStyles.row}>
-      <View style={googleSeparatorStyles.rule} />
-      <Text style={googleSeparatorStyles.label}>{label}</Text>
-      <View style={googleSeparatorStyles.rule} />
+    <View style={separatorStyles.row}>
+      <View style={separatorStyles.rule} />
+      <Text style={separatorStyles.label}>{label}</Text>
+      <View style={separatorStyles.rule} />
     </View>
   );
 }

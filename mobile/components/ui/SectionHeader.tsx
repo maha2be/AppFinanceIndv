@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Colors, Fonts, Space } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 interface SectionHeaderProps {
   title: string;
@@ -18,6 +19,8 @@ export function SectionHeader({
   actionUnderlined = false,
   style,
 }: SectionHeaderProps) {
+  const theme = useTheme();
+  const styles = useStyles(theme);
   return (
     <View style={[styles.row, style]}>
       <Text style={styles.title} accessibilityRole="header">
@@ -40,7 +43,7 @@ export function SectionHeader({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -51,7 +54,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semibold,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.ink,
+    color: colors.ink,
   },
   action: {
     minHeight: 44,
@@ -65,9 +68,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   actionTextUnderlined: {
     textDecorationLine: 'underline',
   },
-});
+}));

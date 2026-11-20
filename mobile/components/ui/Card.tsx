@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, ViewProps } from 'react-native';
-import { Colors, Radius, Shadow, Space } from '../../utils/theme';
+import { Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 type Variant = 'surface' | 'inset' | 'plain';
 
@@ -13,6 +14,8 @@ interface CardProps extends ViewProps {
 
 /** A raised paper block. Used sparingly: sheets, hero blocks, forms. */
 export function Card({ variant = 'surface', padded = true, style, children, ...props }: CardProps) {
+  const theme = useTheme();
+  const styles = useStyles(theme);
   return (
     <View
       style={[
@@ -32,10 +35,12 @@ export function Card({ variant = 'surface', padded = true, style, children, ...p
 
 /** 1px ledger rule. */
 export function Rule({ style }: { style?: ViewProps['style'] }) {
+  const theme = useTheme();
+  const styles = useStyles(theme);
   return <View style={[styles.rule, style]} />;
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, shadow }) => StyleSheet.create({
   base: {
     borderRadius: Radius.block,
   },
@@ -43,19 +48,19 @@ const styles = StyleSheet.create({
     padding: Space.lg,
   },
   surface: {
-    backgroundColor: Colors.surface,
-    ...Shadow.raised,
+    backgroundColor: colors.surface,
+    ...shadow.raised,
   },
   inset: {
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
   },
   plain: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
   },
   rule: {
     height: StyleSheet.hairlineWidth * 2,
-    backgroundColor: Colors.line,
+    backgroundColor: colors.line,
   },
-});
+}));

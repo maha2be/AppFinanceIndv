@@ -15,7 +15,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space, Type } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Screen } from '../ui/Screen';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
@@ -49,6 +50,9 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
     getAppLockState,
     getAppLockState
   );
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const [pin, setPin] = useState('');
   const [pattern, setPattern] = useState<number[]>([]);
@@ -404,7 +408,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
           </View>
           <ActivityIndicator
             size="small"
-            color={Colors.inkMuted}
+            color={colors.inkMuted}
             accessibilityLabel="Memuat kunci aplikasi"
           />
           <Text style={styles.loadingCaption}>Memeriksa keamanan perangkat...</Text>
@@ -427,7 +431,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
         >
           <View style={styles.brand}>
             <View style={styles.iconCircle}>
-              <Ionicons name="lock-closed-outline" size={20} color={Colors.inkSoft} />
+              <Ionicons name="lock-closed-outline" size={20} color={colors.inkSoft} />
             </View>
             <Text style={styles.wordmark}>Bot04</Text>
             <View style={styles.brandRule} />
@@ -455,7 +459,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
       >
         <View style={styles.brand}>
           <View style={styles.iconCircle}>
-            <Ionicons name="lock-closed-outline" size={20} color={Colors.inkSoft} />
+            <Ionicons name="lock-closed-outline" size={20} color={colors.inkSoft} />
           </View>
           <Text style={styles.wordmark}>Bot04</Text>
           <View style={styles.brandRule} />
@@ -503,7 +507,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
 
             {inCooldown ? (
               <View style={styles.cooldownBanner} accessibilityLiveRegion="polite">
-                <Ionicons name="time-outline" size={18} color={Colors.danger} />
+                <Ionicons name="time-outline" size={18} color={colors.danger} />
                 <Text style={styles.cooldownText}>
                   Terlalu banyak percobaan salah. Coba lagi dalam {cooldownSeconds} detik.
                 </Text>
@@ -512,7 +516,7 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
 
             {activeError ? (
               <View style={styles.errorBanner} accessibilityLiveRegion="polite">
-                <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
+                <Ionicons name="alert-circle-outline" size={18} color={colors.danger} />
                 <Text style={styles.errorText}>{activeError}</Text>
               </View>
             ) : null}
@@ -627,10 +631,10 @@ export function AppLockView({ onSignOut }: AppLockViewProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   overlay: {
     position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
-    backgroundColor: Colors.paper,
+    backgroundColor: colors.paper,
     zIndex: 9999,
     elevation: 24,
   },
@@ -655,60 +659,60 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.inkTint,
+    backgroundColor: colors.inkTint,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Space.xs,
   },
   wordmark: {
-    ...Type.h1,
+    ...type.h1,
     fontSize: 38,
     lineHeight: 42,
   },
   brandRule: {
     width: 28,
     height: 1,
-    backgroundColor: Colors.lineStrong,
+    backgroundColor: colors.lineStrong,
   },
   tagline: {
-    ...Type.micro,
+    ...type.micro,
     textTransform: 'uppercase',
   },
   loadingCaption: {
-    ...Type.caption,
-    color: Colors.inkMuted,
+    ...type.caption,
+    color: colors.inkMuted,
   },
   panel: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.block,
     padding: Space.lg,
     gap: Space.sm,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
   },
   subtitle: {
-    ...Type.body,
-    color: Colors.inkSoft,
+    ...type.body,
+    color: colors.inkSoft,
     marginBottom: Space.xs,
   },
   cooldownBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    backgroundColor: Colors.dangerTint,
+    backgroundColor: colors.dangerTint,
     borderWidth: 1,
-    borderColor: 'rgba(163, 43, 43, 0.25)',
+    borderColor: colors.dangerBorder,
     borderRadius: Radius.control,
     paddingVertical: Space.sm,
     paddingHorizontal: Space.md,
     marginBottom: Space.xs,
   },
   cooldownText: {
-    ...Type.caption,
-    color: Colors.danger,
+    ...type.caption,
+    color: colors.danger,
     flex: 1,
     fontVariant: ['tabular-nums'],
   },
@@ -716,17 +720,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    backgroundColor: Colors.dangerTint,
+    backgroundColor: colors.dangerTint,
     borderWidth: 1,
-    borderColor: 'rgba(163, 43, 43, 0.25)',
+    borderColor: colors.dangerBorder,
     borderRadius: Radius.control,
     paddingVertical: Space.sm,
     paddingHorizontal: Space.md,
     marginBottom: Space.xs,
   },
   errorText: {
-    ...Type.caption,
-    color: Colors.danger,
+    ...type.caption,
+    color: colors.danger,
     flex: 1,
   },
   pinField: {
@@ -739,6 +743,6 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     marginTop: Space.xs,
   },
-});
+}));
 
 export default AppLockView;

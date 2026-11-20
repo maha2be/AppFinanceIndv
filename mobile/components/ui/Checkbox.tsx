@@ -1,7 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 interface CheckboxProps {
   checked: boolean;
@@ -13,6 +14,9 @@ interface CheckboxProps {
 
 /** Ledger checkbox: a ruled square, an ink check, and an optional explanation. */
 export function Checkbox({ checked, onChange, label, hint, disabled = false }: CheckboxProps) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
   return (
     <Pressable
       onPress={() => onChange(!checked)}
@@ -28,7 +32,7 @@ export function Checkbox({ checked, onChange, label, hint, disabled = false }: C
       ]}
     >
       <View style={[styles.box, checked && styles.boxChecked]}>
-        {checked ? <Ionicons name="checkmark" size={16} color={Colors.onInk} /> : null}
+        {checked ? <Ionicons name="checkmark" size={16} color={colors.onInk} /> : null}
       </View>
       <View style={styles.textCol}>
         <Text style={styles.label}>{label}</Text>
@@ -38,7 +42,7 @@ export function Checkbox({ checked, onChange, label, hint, disabled = false }: C
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -57,15 +61,15 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: Radius.control - 2,
     borderWidth: 1.5,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 1,
   },
   boxChecked: {
-    backgroundColor: Colors.ink,
-    borderColor: Colors.ink,
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
   },
   textCol: {
     flex: 1,
@@ -75,13 +79,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 14,
     lineHeight: 20,
-    color: Colors.ink,
+    color: colors.ink,
   },
   hint: {
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 17,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
     marginTop: 2,
   },
-});
+}));

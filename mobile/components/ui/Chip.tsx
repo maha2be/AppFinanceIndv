@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { Colors, Fonts, Radius, Space } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 interface ChipProps {
   label: string;
@@ -10,6 +11,8 @@ interface ChipProps {
 
 /** Outline chip with a 44pt touch target. */
 export function Chip({ label, selected = false, onPress }: ChipProps) {
+  const theme = useTheme();
+  const styles = useStyles(theme);
   return (
     <Pressable
       onPress={onPress}
@@ -29,20 +32,20 @@ export function Chip({ label, selected = false, onPress }: ChipProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   chip: {
     minHeight: 44,
     paddingHorizontal: Space.lg,
     borderRadius: Radius.pill,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
-    backgroundColor: Colors.surface,
+    borderColor: colors.lineStrong,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chipSelected: {
-    backgroundColor: Colors.ink,
-    borderColor: Colors.ink,
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
   },
   pressed: {
     opacity: 0.8,
@@ -51,9 +54,9 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   textSelected: {
-    color: Colors.onInk,
+    color: colors.onInk,
   },
-});
+}));

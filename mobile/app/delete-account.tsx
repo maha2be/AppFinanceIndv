@@ -8,7 +8,8 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius, Space, Type } from '../utils/theme';
+import { Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { User } from '../types';
 import { authApi, describeApiError } from '../services/auth';
 import {
@@ -39,6 +40,9 @@ export default function DeleteAccountScreen() {
   const proofGeneration = useRef(0);
   const mounted = useRef(true);
   const googlePrompt = useRef(false);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const clearSecrets = useCallback(() => {
     setPassword('');
@@ -188,7 +192,7 @@ export default function DeleteAccountScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
         <Text style={styles.title}>Delete account</Text>
       </View>
@@ -203,7 +207,7 @@ export default function DeleteAccountScreen() {
         <View style={styles.content}>
           <View style={styles.warningBox} accessibilityRole="alert">
             <View style={styles.warningHeader}>
-              <Ionicons name="warning-outline" size={20} color={Colors.danger} />
+              <Ionicons name="warning-outline" size={20} color={colors.danger} />
               <Text style={styles.warningTitle}>Permanent data deletion</Text>
             </View>
             <Text style={styles.warningBody}>
@@ -286,7 +290,7 @@ export default function DeleteAccountScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -301,7 +305,7 @@ const styles = StyleSheet.create({
     marginLeft: -Space.sm,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
   },
   loadingBlock: {
     paddingTop: Space.lg,
@@ -310,9 +314,9 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   warningBox: {
-    backgroundColor: Colors.dangerTint,
+    backgroundColor: colors.dangerTint,
     borderWidth: 1,
-    borderColor: 'rgba(163, 43, 43, 0.28)',
+    borderColor: colors.dangerBorder,
     borderRadius: Radius.block,
     padding: Space.lg,
     gap: Space.sm,
@@ -324,36 +328,36 @@ const styles = StyleSheet.create({
     gap: Space.sm,
   },
   warningTitle: {
-    ...Type.title,
-    color: Colors.danger,
+    ...type.title,
+    color: colors.danger,
   },
   warningBody: {
-    ...Type.body,
-    color: Colors.ink,
+    ...type.body,
+    color: colors.ink,
   },
   reauthNote: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.block,
     padding: Space.lg,
     gap: Space.xs,
     marginBottom: Space.lg,
   },
   reauthTitle: {
-    ...Type.bodyStrong,
-    color: Colors.ink,
+    ...type.bodyStrong,
+    color: colors.ink,
   },
   reauthBody: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
   },
   error: {
-    ...Type.caption,
-    color: Colors.danger,
+    ...type.caption,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   checkboxWrap: {
     marginBottom: Space.xl,
   },
-});
+}));

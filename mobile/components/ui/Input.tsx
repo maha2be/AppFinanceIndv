@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
-import { Colors, Fonts, Space } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -27,8 +28,11 @@ export function Input({
   ...props
 }: InputProps) {
   const [focused, setFocused] = useState(false);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
-  const ruleColor = error ? Colors.danger : focused ? Colors.ink : Colors.lineStrong;
+  const ruleColor = error ? colors.danger : focused ? colors.ink : colors.lineStrong;
 
   return (
     <View style={styles.wrap}>
@@ -41,8 +45,8 @@ export function Input({
       <View style={[styles.field, { borderBottomColor: ruleColor }]}>
         {leading ? <Text style={styles.leading}>{leading}</Text> : null}
         <TextInput
-          placeholderTextColor={Colors.inkMuted}
-          selectionColor={Colors.ink}
+          placeholderTextColor={colors.inkMuted}
+          selectionColor={colors.ink}
           style={[styles.input, fieldStyle, style]}
           onFocus={(event) => {
             setFocused(true);
@@ -69,7 +73,7 @@ export function Input({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   wrap: {
     marginBottom: Space.lg,
   },
@@ -77,7 +81,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     marginBottom: Space.xs,
   },
   field: {
@@ -90,7 +94,7 @@ const styles = StyleSheet.create({
   leading: {
     fontFamily: Fonts.medium,
     fontSize: 15,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
   },
   input: {
     flex: 1,
@@ -98,20 +102,20 @@ const styles = StyleSheet.create({
     paddingVertical: Space.sm,
     fontFamily: Fonts.regular,
     fontSize: 15,
-    color: Colors.ink,
+    color: colors.ink,
   },
   error: {
     marginTop: Space.xs,
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.danger,
+    color: colors.danger,
   },
   hint: {
     marginTop: Space.xs,
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkMuted,
+    color: colors.inkMuted,
   },
-});
+}));

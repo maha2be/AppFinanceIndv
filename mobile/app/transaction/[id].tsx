@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Fonts, Radius, Space, Type } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { Category, Transaction, TransactionType } from '../../types';
 import { transactionApi } from '../../services/transactions';
 import { categoryApi } from '../../services/categories';
@@ -34,40 +35,43 @@ import { ErrorState } from '../../components/ui/ErrorState';
 import { Skeleton, SkeletonRows } from '../../components/ui/Skeleton';
 import { FadeIn } from '../../components/ui/FadeIn';
 
-const TYPE_META: Record<
-  TransactionType,
-  {
-    tone: 'income' | 'expense' | 'investment';
-    color: string;
-    tint: string;
-    icon: keyof typeof Ionicons.glyphMap;
-  }
-> = {
-  income: {
-    tone: 'income',
-    color: Colors.income,
-    tint: Colors.incomeTint,
-    icon: 'arrow-down',
-  },
-  expense: {
-    tone: 'expense',
-    color: Colors.expense,
-    tint: Colors.expenseTint,
-    icon: 'arrow-up',
-  },
-  investment: {
-    tone: 'investment',
-    color: Colors.investment,
-    tint: Colors.investmentTint,
-    icon: 'trending-up',
-  },
-};
-
 export default function TransactionDetailScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
   const transactionId = Number.parseInt(String(rawId ?? ''), 10);
   const validId = Number.isSafeInteger(transactionId) && transactionId > 0;
+
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+  const typeMeta: Record<
+    TransactionType,
+    {
+      tone: 'income' | 'expense' | 'investment';
+      color: string;
+      tint: string;
+      icon: keyof typeof Ionicons.glyphMap;
+    }
+  > = {
+    income: {
+      tone: 'income',
+      color: colors.income,
+      tint: colors.incomeTint,
+      icon: 'arrow-down',
+    },
+    expense: {
+      tone: 'expense',
+      color: colors.expense,
+      tint: colors.expenseTint,
+      icon: 'arrow-up',
+    },
+    investment: {
+      tone: 'investment',
+      color: colors.investment,
+      tint: colors.investmentTint,
+      icon: 'trending-up',
+    },
+  };
 
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -294,7 +298,7 @@ export default function TransactionDetailScreen() {
     );
   };
 
-  const meta = transaction ? TYPE_META[transaction.type] : TYPE_META.expense;
+  const meta = transaction ? typeMeta[transaction.type] : typeMeta.expense;
   const heroText = transaction ? formatRupiah(transaction.amount) : 'Rp0';
   const heroSize = amountFontSize(heroText, 40, 24);
 
@@ -325,7 +329,7 @@ export default function TransactionDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel="Kembali"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>
           Detail transaksi
@@ -338,7 +342,7 @@ export default function TransactionDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Lihat riwayat perubahan transaksi ini"
           >
-            <Ionicons name="time-outline" size={16} color={Colors.inkSoft} />
+            <Ionicons name="time-outline" size={16} color={colors.inkSoft} />
             <Text style={styles.historyActionText}>Riwayat</Text>
           </Pressable>
         ) : null}
@@ -405,7 +409,7 @@ export default function TransactionDetailScreen() {
             <FadeIn delay={60}>
               <View style={styles.lockedBlock}>
                 <View style={styles.lockedHeader}>
-                  <Ionicons name="swap-horizontal-outline" size={18} color={Colors.debt} />
+                  <Ionicons name="swap-horizontal-outline" size={18} color={colors.debt} />
                   <Text style={styles.lockedTitle}>Terkait Hutang & Piutang</Text>
                 </View>
                 <Text style={styles.lockedBody}>
@@ -417,17 +421,20 @@ export default function TransactionDetailScreen() {
                   <ReadOnlyRow
                     label="Kategori"
                     value={transaction.category_name || 'Tanpa kategori'}
+                    styles={styles}
                   />
                   <ReadOnlyRow
                     label="Tanggal"
                     value={formatDateIndo(transaction.transaction_date)}
+                    styles={styles}
                   />
                   {transaction.asset_name ? (
-                    <ReadOnlyRow label="Nama aset" value={transaction.asset_name} />
+                    <ReadOnlyRow label="Nama aset" value={transaction.asset_name} styles={styles} />
                   ) : null}
                   <ReadOnlyRow
                     label="Catatan"
                     value={transaction.note || 'Tidak ada catatan'}
+                    styles={styles}
                     last
                   />
                 </View>
@@ -596,10 +603,12 @@ function ReadOnlyRow({
   label,
   value,
   last = false,
+  styles,
 }: {
   label: string;
   value: string;
   last?: boolean;
+  styles: ReturnType<typeof useStyles>;
 }) {
   return (
     <View style={[styles.readOnlyRow, last && styles.readOnlyRowLast]}>
@@ -609,7 +618,7 @@ function ReadOnlyRow({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -624,7 +633,7 @@ const styles = StyleSheet.create({
     marginLeft: -Space.sm,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
     flex: 1,
   },
   historyAction: {
@@ -638,7 +647,7 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   pressed: {
     opacity: 0.75,
@@ -654,7 +663,7 @@ const styles = StyleSheet.create({
     paddingBottom: Space.lg,
     marginBottom: Space.lg,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -677,7 +686,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.06,
   },
   ImmutableHint: {
-    ...Type.micro,
+    ...type.micro,
   },
   heroAmount: {
     fontFamily: Fonts.serif,
@@ -691,18 +700,18 @@ const styles = StyleSheet.create({
     marginTop: Space.sm,
   },
   heroMetaLabel: {
-    ...Type.bodyStrong,
-    color: Colors.inkSoft,
+    ...type.bodyStrong,
+    color: colors.inkSoft,
     flex: 1,
   },
   heroMetaDate: {
-    ...Type.caption,
+    ...type.caption,
   },
   formError: {
     fontFamily: Fonts.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.danger,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   amountField: {
@@ -724,13 +733,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   clearLink: {
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     textDecorationLine: 'underline',
   },
   inlineClear: {
@@ -749,12 +758,12 @@ const styles = StyleSheet.create({
     marginTop: Space.md,
     paddingTop: Space.lg,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
   },
   lockedBlock: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.block,
     padding: Space.lg,
     gap: Space.md,
@@ -765,15 +774,15 @@ const styles = StyleSheet.create({
     gap: Space.sm,
   },
   lockedTitle: {
-    ...Type.title,
+    ...type.title,
   },
   lockedBody: {
-    ...Type.body,
-    color: Colors.inkSoft,
+    ...type.body,
+    color: colors.inkSoft,
   },
   readOnlyList: {
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
     marginTop: Space.xs,
   },
   readOnlyRow: {
@@ -783,17 +792,17 @@ const styles = StyleSheet.create({
     gap: Space.md,
     paddingVertical: Space.sm,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.line,
+    borderBottomColor: colors.line,
   },
   readOnlyRowLast: {
     borderBottomWidth: 0,
   },
   readOnlyLabel: {
-    ...Type.caption,
-    color: Colors.inkSoft,
+    ...type.caption,
+    color: colors.inkSoft,
   },
   readOnlyValue: {
-    ...Type.bodyStrong,
+    ...type.bodyStrong,
     flexShrink: 1,
     textAlign: 'right',
   },
@@ -802,7 +811,7 @@ const styles = StyleSheet.create({
     paddingTop: Space.md,
     paddingBottom: Space.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
-    backgroundColor: Colors.paper,
+    borderTopColor: colors.line,
+    backgroundColor: colors.paper,
   },
-});
+}));

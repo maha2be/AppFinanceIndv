@@ -8,7 +8,8 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Radius, Space, Type } from '../utils/theme';
+import { Radius, Space } from '../utils/theme';
+import { createThemedStyles, useTheme } from '../services/theme';
 import { User } from '../types';
 import { authApi, describeApiError } from '../services/auth';
 import { validateNewPassword } from '../utils/password';
@@ -26,6 +27,9 @@ export default function ChangePasswordScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
 
   const clearSecrets = useCallback(() => {
     setCurrentPassword('');
@@ -107,7 +111,7 @@ export default function ChangePasswordScreen() {
           accessibilityRole="button"
           accessibilityLabel="Back"
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.ink} />
+          <Ionicons name="arrow-back" size={20} color={colors.ink} />
         </Pressable>
         <Text style={styles.title}>Change password</Text>
       </View>
@@ -121,7 +125,7 @@ export default function ChangePasswordScreen() {
       ) : user && !user.has_password ? (
         <View style={styles.noticeBlock}>
           <View style={styles.noticeHeader}>
-            <Ionicons name="logo-google" size={18} color={Colors.inkSoft} />
+            <Ionicons name="logo-google" size={18} color={colors.inkSoft} />
             <Text style={styles.noticeTitle}>Managed by Google</Text>
           </View>
           <Text style={styles.noticeBody}>
@@ -198,7 +202,7 @@ export default function ChangePasswordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -213,28 +217,28 @@ const styles = StyleSheet.create({
     marginLeft: -Space.sm,
   },
   title: {
-    ...Type.h2,
+    ...type.h2,
   },
   loadingBlock: {
     paddingTop: Space.lg,
   },
   intro: {
-    ...Type.body,
-    color: Colors.inkSoft,
+    ...type.body,
+    color: colors.inkSoft,
     marginBottom: Space.lg,
   },
   form: {
     gap: 0,
   },
   error: {
-    ...Type.caption,
-    color: Colors.danger,
+    ...type.caption,
+    color: colors.danger,
     marginBottom: Space.md,
   },
   noticeBlock: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.line,
+    borderColor: colors.line,
     borderRadius: Radius.block,
     padding: Space.lg,
     gap: Space.md,
@@ -245,13 +249,13 @@ const styles = StyleSheet.create({
     gap: Space.sm,
   },
   noticeTitle: {
-    ...Type.title,
+    ...type.title,
   },
   noticeBody: {
-    ...Type.body,
-    color: Colors.inkSoft,
+    ...type.body,
+    color: colors.inkSoft,
   },
   noticeButton: {
     marginTop: Space.xs,
   },
-});
+}));

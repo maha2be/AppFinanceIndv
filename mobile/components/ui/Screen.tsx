@@ -11,7 +11,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors, Space } from '../../utils/theme';
+import { Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 interface ScreenProps {
   children: React.ReactNode;
@@ -41,6 +42,10 @@ export function Screen({
   bottomInset = false,
   keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height',
 }: ScreenProps) {
+  const theme = useTheme();
+  const { colors } = theme;
+  const styles = useStyles(theme);
+
   const body = scroll ? (
     <ScrollView
       style={styles.flex}
@@ -53,9 +58,9 @@ export function Screen({
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={Colors.ink}
-            colors={[Colors.ink]}
-            progressBackgroundColor={Colors.surface}
+            tintColor={colors.ink}
+            colors={[colors.ink]}
+            progressBackgroundColor={colors.surface}
           />
         ) : undefined
       }
@@ -79,10 +84,10 @@ export function Screen({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: Colors.paper,
+    backgroundColor: colors.paper,
   },
   content: {
     paddingHorizontal: Space.gutter,
@@ -92,4 +97,4 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-});
+}));

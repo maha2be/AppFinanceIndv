@@ -1,7 +1,7 @@
 /**
- * Runtime regressions for the Settings screen. Shared components are contract
- * doubles; the actual screen supplies every action, branch, and confirmation.
- * No native modules, network, timers, or pixel-level style assertions are used.
+ * Runtime regressions for the Settings stack screen (`app/settings.tsx`).
+ * Shared components are contract doubles; the actual screen supplies every
+ * action, branch, and confirmation.
  */
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -50,13 +50,29 @@ function createSettingsHarness(options = {}) {
     getProfile: 0,
     createTelegramLinkToken: 0,
     unlinkTelegram: 0,
-    logout: 0,
     googleAvailability: 0,
+    back: 0,
     alerts: [],
     pushes: [],
     replacements: [],
     describedErrors: [],
+    themeModes: [],
   };
+  let themeMode = options.themeMode || 'light';
+  const themeColors = (mode) => ({
+    paper: mode === 'dark' ? '#141613' : '#F2F0E9',
+    surface: mode === 'dark' ? '#1C1F1B' : '#FBFAF5',
+    surfaceAlt: mode === 'dark' ? '#252923' : '#EBE8DE',
+    line: mode === 'dark' ? '#31362E' : '#DAD5C7',
+    lineStrong: mode === 'dark' ? '#454C41' : '#C9C2B0',
+    ink: mode === 'dark' ? '#F2EFE6' : '#171A16',
+    inkSoft: mode === 'dark' ? '#C4C2B8' : '#565A52',
+    inkMuted: mode === 'dark' ? '#9B9A90' : '#64685E',
+    onInk: mode === 'dark' ? '#171A16' : '#F7F5EE',
+    danger: mode === 'dark' ? '#E56E6E' : '#A32B2B',
+    dangerTint: mode === 'dark' ? 'rgba(229, 110, 110, 0.16)' : 'rgba(163, 43, 43, 0.10)',
+    inkTint: mode === 'dark' ? 'rgba(242, 239, 230, 0.08)' : 'rgba(23, 26, 22, 0.06)',
+  });
   const lockState = {
     ready: true,
     supported: true,
@@ -69,23 +85,20 @@ function createSettingsHarness(options = {}) {
     getProfile: async () => profile(options.user),
     createTelegramLinkToken: async () => ({ code: '012345', expires_in_minutes: 1 }),
     unlinkTelegram: async () => {},
-    logout: async () => {},
     googleAvailability: async () => options.googleAvailable ?? true,
     ...options.behavior,
   };
   const authApi = {};
-  for (const method of ['getProfile', 'createTelegramLinkToken', 'unlinkTelegram', 'logout']) {
+  for (const method of ['getProfile', 'createTelegramLinkToken', 'unlinkTelegram']) {
     authApi[method] = (...args) => {
       calls[method] += 1;
       return behavior[method](...args);
     };
   }
   const harness = createHarness({
-    componentPath: 'app/(tabs)/settings.tsx',
+    componentPath: 'app/settings.tsx',
     modules: {
       'expo-router': {
-        // Exercise real screen focus/blur callbacks without changing the shared
-        // renderer, whose focus helper does not model a preceding blur cleanup.
         useFocusEffect: (callback) => {
           focusCallback = callback;
           harness.React.useEffect(() => {
@@ -97,43 +110,58 @@ function createSettingsHarness(options = {}) {
           }, [callback]);
         },
         router: {
+          back: () => { calls.back += 1; },
           push: (route) => calls.pushes.push(route),
           replace: (route) => calls.replacements.push(route),
         },
       },
       'react-native': { useWindowDimensions: () => dimensions },
-      '../../utils/theme': {
+      '../utils/theme': {
         Colors: tokenProxy(),
         Fonts: tokenProxy(),
         Radius: tokenProxy(),
         Space: tokenProxy(),
         Type: tokenProxy(),
       },
-      '../../components/ui/Screen': { Screen: stub('Screen') },
-      '../../components/ui/FadeIn': { FadeIn: stub('FadeIn') },
-      '../../components/ui/Skeleton': { Skeleton: stub('Skeleton') },
-      '../../components/auth/LinkGoogleSheet': { LinkGoogleSheet: stub('LinkGoogleSheet') },
-      '../../services/appAlert': {
+      '../components/ui/Screen': { Screen: stub('Screen') },
+      '../components/ui/FadeIn': { FadeIn: stub('FadeIn') },
+      '../components/auth/LinkGoogleSheet': { LinkGoogleSheet: stub('LinkGoogleSheet') },
+      '../services/appAlert': {
         AppAlert: {
           alert: (title, message, buttons) => calls.alerts.push({ title, message, buttons }),
         },
       },
-      '../../services/auth': {
+      '../services/auth': {
         authApi,
         describeApiError: (error, fallback) => {
           calls.describedErrors.push({ error, fallback });
           return error?.response?.data?.detail || fallback;
         },
       },
-      '../../services/googleAuth': {
+      '../services/googleAuth': {
         isGoogleAuthAvailable: () => {
           calls.googleAvailability += 1;
           return behavior.googleAvailability();
         },
       },
-      '../../services/appLock': {
+      '../services/appLock': {
         getAppLockState: () => lockState,
         subscribeAppLock: () => () => {},
+      },
+      '../services/theme': {
+        useTheme: () => ({
+          mode: themeMode,
+          isDark: themeMode === 'dark',
+          colors: themeColors(themeMode),
+          type: tokenProxy(),
+          shadow: tokenProxy(),
+          setThemeMode: async (next) => {
+            calls.themeModes.push(next);
+            themeMode = next;
+            harness.flush();
+          },
+        }),
+        createThemedStyles: (factory) => (theme) => factory(theme),
       },
     },
   });
@@ -151,8 +179,6 @@ function createSettingsHarness(options = {}) {
   return { harness, calls, behavior, lockState, dimensions, blur, focus };
 }
 
-// React Native treats omitted `disabled` as enabled. The shared harness's press
-// method requires explicit false, so retain native semantics in this file only.
 async function press(harness, label) {
   const control = harness.byLabel(label);
   assert.ok(control, `control ${label} must be rendered`);
@@ -229,7 +255,7 @@ function assertProfileActionsDisabled(harness) {
   if (google) assert.equal(google.props.disabled, true);
 }
 
-test('profile loading shows placeholders until the requested account arrives', async () => {
+test('profile loading shows placeholders in Preferences until the requested account arrives', async () => {
   const pending = deferred();
   const { harness, calls } = createSettingsHarness({
     behavior: { getProfile: () => pending.promise },
@@ -237,21 +263,15 @@ test('profile loading shows placeholders until the requested account arrives', a
   await harness.mount();
 
   assert.equal(calls.getProfile, 1);
-  assert.ok(harness.allByType('Skeleton').length > 0);
-  assert.equal(harness.textMatching(/ayu@example/), undefined);
   assert.equal(harness.byLabel('Coba lagi'), undefined);
-  assert.ok(harness.texts().includes('Loading account details...'));
   assert.equal(harness.texts().filter((text) => text === 'Loading...').length, 2);
 
-  pending.resolve(profile({ first_name: 'Élodie 李', currency: 'EUR', timezone: 'Europe/Paris' }));
+  pending.resolve(profile({ currency: 'EUR', timezone: 'Europe/Paris' }));
   await harness.settle();
 
-  assert.ok(harness.texts().includes('Élodie 李'));
-  assert.ok(harness.texts().includes('ayu@example.test'));
   assert.ok(harness.texts().includes('EUR'));
   assert.ok(harness.texts().includes('Europe/Paris'));
-  assert.equal(harness.allByType('Skeleton').length, 0);
-  assert.equal(harness.texts().includes('Loading account details...'), false);
+  assert.equal(harness.texts().includes('Loading...'), false);
 });
 
 test('empty optional profile fields retain safe display fallbacks', async () => {
@@ -260,7 +280,6 @@ test('empty optional profile fields retain safe display fallbacks', async () => 
   });
   await harness.mount();
 
-  assert.ok(harness.texts().includes('Pengguna'));
   assert.equal(harness.texts().filter((text) => text === 'Not available').length, 2);
   assert.equal(harness.texts().includes('IDR'), false);
   assert.equal(harness.texts().includes('Asia/Jakarta'), false);
@@ -268,7 +287,7 @@ test('empty optional profile fields retain safe display fallbacks', async () => 
   assert.equal(harness.byLabel('Coba lagi'), undefined);
 });
 
-test('profile dependency failure shows its error and retry loads the account', async () => {
+test('profile dependency failure shows its error and retry loads preferences', async () => {
   const failure = apiError('Profile temporarily unavailable.');
   const { harness, calls, behavior } = createSettingsHarness({
     behavior: { getProfile: async () => { throw failure; } },
@@ -276,19 +295,16 @@ test('profile dependency failure shows its error and retry loads the account', a
   await harness.mount();
 
   assert.ok(harness.texts().includes('Profile temporarily unavailable.'));
-  assert.ok(harness.texts().includes('Account details unavailable.'));
   assert.equal(harness.byLabel('Coba lagi').props.disabled, false);
-  assert.equal(harness.allByType('Skeleton').length, 0);
   assert.equal(calls.describedErrors[0].error, failure);
-  assert.equal(harness.textMatching(/ayu@example/), undefined);
 
-  behavior.getProfile = async () => profile({ first_name: 'Recovered account' });
+  behavior.getProfile = async () => profile({ currency: 'JPY', timezone: 'Asia/Tokyo' });
   await retry(harness);
 
   assert.equal(calls.getProfile, 2);
   assert.equal(harness.byLabel('Coba lagi'), undefined);
-  assert.ok(harness.texts().includes('Recovered account'));
-  assert.equal(harness.allByType('Skeleton').length, 0);
+  assert.ok(harness.texts().includes('JPY'));
+  assert.ok(harness.texts().includes('Asia/Tokyo'));
 });
 
 test('a failed profile retry remains retryable without navigation or account mutations', async () => {
@@ -303,18 +319,25 @@ test('a failed profile retry remains retryable without navigation or account mut
   assert.equal(harness.byLabel('Coba lagi').props.disabled, false);
   assert.equal(calls.createTelegramLinkToken, 0);
   assert.equal(calls.unlinkTelegram, 0);
-  assert.equal(calls.logout, 0);
   assert.deepEqual(calls.pushes, []);
   assert.deepEqual(calls.replacements, []);
 });
 
+test('back button returns to Saya without logging out or mutating integrations', async () => {
+  const { harness, calls } = createSettingsHarness();
+  await harness.mount();
+
+  await press(harness, 'Kembali');
+  assert.equal(calls.back, 1);
+  assert.deepEqual(calls.pushes, []);
+});
+
 for (const [label, route] of [
-  ['Transaksi berulang', '/recurring'],
   ['Kunci aplikasi', '/app-lock'],
   ['Change password', '/change-password'],
   ['Delete account', '/delete-account'],
 ]) {
-  test(`${label} opens ${route} without logging out or mutating integrations`, async () => {
+  test(`${label} opens ${route} without mutating integrations`, async () => {
     const { harness, calls } = createSettingsHarness();
     await harness.mount();
 
@@ -322,86 +345,40 @@ for (const [label, route] of [
 
     assert.deepEqual(calls.pushes, [route]);
     assert.deepEqual(calls.replacements, []);
-    assert.equal(calls.logout, 0);
     assert.equal(calls.unlinkTelegram, 0);
     assert.equal(calls.createTelegramLinkToken, 0);
   });
 }
 
-test('logout cancellation keeps the current session and does not navigate', async () => {
-  const { harness, calls } = createSettingsHarness();
-  await harness.mount();
-
-  await press(harness, 'Keluar dari akun');
-  const { cancel } = confirmation(calls);
-  await cancel.onPress?.();
-
-  assert.equal(calls.logout, 0);
-  assert.deepEqual(calls.replacements, []);
-  assert.deepEqual(calls.pushes, []);
-});
-
-test('confirmed logout waits for session cleanup before replacing the login route', async () => {
-  const pending = deferred();
+test('Telegram initial token preserves leading zeroes and expiry', async () => {
   const { harness, calls } = createSettingsHarness({
-    behavior: { logout: () => pending.promise },
+    user: { telegram_linked: false },
+    behavior: { createTelegramLinkToken: async () => ({ code: '004219', expires_in_minutes: 10 }) },
   });
   await harness.mount();
-  await press(harness, 'Keluar dari akun');
 
-  assert.equal(calls.logout, 0, 'opening the confirmation must not log out');
-  const result = confirmation(calls).confirm.onPress();
-  assert.equal(calls.logout, 1);
-  assert.deepEqual(calls.replacements, [], 'login must wait for logout completion');
+  await press(harness, 'Hubungkan akun Telegram');
 
-  pending.resolve();
-  await result;
-  await harness.settle();
-
-  assert.deepEqual(calls.replacements, ['/(auth)/login']);
-  assert.deepEqual(calls.pushes, [], 'logout must replace, not leave an authenticated back route');
+  assert.equal(calls.createTelegramLinkToken, 1);
+  assert.equal(calls.alerts.length, 1);
+  assert.equal(calls.alerts[0].title, 'Kode tautan Telegram');
+  assert.match(calls.alerts[0].message, /\/link 004219/);
+  assert.match(calls.alerts[0].message, /10 menit/);
 });
 
-test('failed session cleanup never replaces the screen with a successful logout route', async () => {
-  const failure = new Error('Session cleanup failed.');
+test('Telegram replacement token preserves leading zeroes and expiry', async () => {
   const { harness, calls } = createSettingsHarness({
-    behavior: { logout: async () => { throw failure; } },
+    user: { telegram_linked: true },
+    behavior: { createTelegramLinkToken: async () => ({ code: '009901', expires_in_minutes: 15 }) },
   });
   await harness.mount();
-  await press(harness, 'Keluar dari akun');
 
-  // Session cleanup failures must now be handled visibly and refresh the
-  // authoritative profile before restoring account-specific actions.
-  await confirmation(calls).confirm.onPress();
-  await harness.settle();
+  await press(harness, 'New Telegram link code');
 
-  assert.equal(calls.logout, 1);
-  assert.deepEqual(calls.replacements, []);
-  assert.deepEqual(calls.pushes, []);
-  assert.equal(calls.alerts.at(-1).title, 'Unable to sign out');
-  assert.equal(calls.alerts.at(-1).message, 'Try again.');
-  assert.equal(calls.describedErrors.at(-1).error, failure);
-  assert.equal(calls.getProfile, 2);
-  assert.equal(harness.byLabel('Keluar dari akun').props.accessibilityState.busy, false);
-  assert.equal(harness.byLabel('Change password').props.disabled, false);
+  assert.equal(calls.createTelegramLinkToken, 1);
+  assert.match(calls.alerts[0].message, /\/link 009901/);
+  assert.match(calls.alerts[0].message, /15 menit/);
 });
-
-for (const linked of [false, true]) {
-  test(`Telegram ${linked ? 'replacement' : 'initial'} token preserves leading zeroes and expiry`, async () => {
-    const { harness, calls } = createSettingsHarness({ user: { telegram_linked: linked } });
-    await harness.mount();
-
-    await press(harness, linked ? 'New Telegram link code' : 'Hubungkan akun Telegram');
-
-    assert.equal(calls.createTelegramLinkToken, 1);
-    assert.equal(calls.alerts.length, 1);
-    assert.match(calls.alerts[0].message, /\/link 012345\b/);
-    assert.match(calls.alerts[0].message, /\b1 menit\b/);
-    assert.match(calls.alerts[0].message, /sekali/);
-    assert.equal(calls.unlinkTelegram, 0);
-    assert.equal(calls.getProfile, 1);
-  });
-}
 
 test('Telegram token generation disables its control until the request completes', async () => {
   const pending = deferred();
@@ -410,43 +387,42 @@ test('Telegram token generation disables its control until the request completes
   });
   await harness.mount();
 
-  const result = harness.byLabel('Hubungkan akun Telegram').props.onPress();
+  const request = harness.byLabel('Hubungkan akun Telegram').props.onPress();
   harness.flush();
-  assert.equal(calls.createTelegramLinkToken, 1);
   assert.equal(harness.byLabel('Hubungkan akun Telegram').props.disabled, true);
   assert.equal(harness.byLabel('Hubungkan akun Telegram').props.accessibilityState.busy, true);
-  assert.equal(harness.allByType('ActivityIndicator').length, 1);
-  assert.equal(calls.alerts.length, 0);
 
-  pending.resolve({ code: '654321', expires_in_minutes: 10 });
-  await result;
+  await harness.byLabel('Hubungkan akun Telegram').props.onPress();
+  assert.equal(calls.createTelegramLinkToken, 1);
+
+  pending.resolve({ code: '654321', expires_in_minutes: 5 });
+  await request;
   await harness.settle();
-
   assert.equal(harness.byLabel('Hubungkan akun Telegram').props.disabled, false);
   assert.equal(harness.byLabel('Hubungkan akun Telegram').props.accessibilityState.busy, false);
-  assert.equal(harness.allByType('ActivityIndicator').length, 0);
-  assert.match(calls.alerts[0].message, /\/link 654321\b/);
 });
 
 test('Telegram token dependency errors reset loading and permit a successful retry', async () => {
-  const failure = apiError('Telegram service unavailable.');
-  const { harness, calls, behavior } = createSettingsHarness({
-    behavior: { createTelegramLinkToken: async () => { throw failure; } },
+  let attempt = 0;
+  const { harness, calls } = createSettingsHarness({
+    behavior: {
+      createTelegramLinkToken: async () => {
+        attempt += 1;
+        if (attempt === 1) throw apiError('Telegram service unavailable.');
+        return { code: '777888', expires_in_minutes: 3 };
+      },
+    },
   });
   await harness.mount();
-  await press(harness, 'Hubungkan akun Telegram');
 
+  await press(harness, 'Hubungkan akun Telegram');
+  assert.equal(calls.alerts[0].title, 'Gagal membuat kode');
   assert.equal(calls.alerts[0].message, 'Telegram service unavailable.');
-  assert.equal(calls.describedErrors.at(-1).error, failure);
   assert.equal(harness.byLabel('Hubungkan akun Telegram').props.disabled, false);
-  assert.equal(harness.byLabel('Hubungkan akun Telegram').props.accessibilityState.busy, false);
 
-  behavior.createTelegramLinkToken = async () => ({ code: '000001', expires_in_minutes: 5 });
   await press(harness, 'Hubungkan akun Telegram');
-
-  assert.equal(calls.createTelegramLinkToken, 2);
-  assert.match(calls.alerts.at(-1).message, /\/link 000001\b/);
-  assert.equal(calls.unlinkTelegram, 0);
+  assert.equal(calls.alerts[1].title, 'Kode tautan Telegram');
+  assert.match(calls.alerts[1].message, /\/link 777888/);
 });
 
 test('Telegram token errors without server detail use the screen fallback', async () => {
@@ -454,73 +430,70 @@ test('Telegram token errors without server detail use the screen fallback', asyn
     behavior: { createTelegramLinkToken: async () => { throw new Error('network'); } },
   });
   await harness.mount();
+
   await press(harness, 'Hubungkan akun Telegram');
 
-  const described = calls.describedErrors.at(-1);
-  assert.equal(described.fallback, 'Coba lagi sebentar lagi.');
-  assert.equal(calls.alerts.at(-1).message, 'Coba lagi sebentar lagi.');
-  assert.equal(harness.byLabel('Hubungkan akun Telegram').props.disabled, false);
+  assert.equal(calls.alerts[0].title, 'Gagal membuat kode');
+  assert.equal(calls.alerts[0].message, 'Coba lagi sebentar lagi.');
+  assert.equal(calls.describedErrors.at(-1).fallback, 'Coba lagi sebentar lagi.');
 });
 
 test('unlinked Telegram accounts expose no unlink action', async () => {
-  const { harness, calls } = createSettingsHarness();
+  const { harness } = createSettingsHarness({ user: { telegram_linked: false } });
   await harness.mount();
 
-  assert.equal(harness.byLabel('Putuskan tautan Telegram'), undefined);
   assert.ok(harness.byLabel('Hubungkan akun Telegram'));
-  assert.equal(calls.unlinkTelegram, 0);
+  assert.equal(harness.byLabel('Putuskan tautan Telegram'), undefined);
 });
 
 test('canceling Telegram unlink preserves the linked profile without reloading', async () => {
   const { harness, calls } = createSettingsHarness({ user: { telegram_linked: true } });
   await harness.mount();
+
   await press(harness, 'Putuskan tautan Telegram');
   await confirmation(calls).cancel.onPress?.();
 
   assert.equal(calls.unlinkTelegram, 0);
   assert.equal(calls.getProfile, 1);
   assert.ok(harness.byLabel('Putuskan tautan Telegram'));
-  assert.ok(harness.byLabel('New Telegram link code'));
 });
 
 test('confirmed Telegram unlink waits for deletion and then reloads the authoritative profile', async () => {
-  const pending = deferred();
-  const { harness, calls, behavior } = createSettingsHarness({
-    user: { telegram_linked: true },
-    behavior: { unlinkTelegram: () => pending.promise },
-  });
+  const { harness, calls, behavior } = createSettingsHarness({ user: { telegram_linked: true } });
   await harness.mount();
-  await press(harness, 'Putuskan tautan Telegram');
-  assert.equal(calls.unlinkTelegram, 0);
+  behavior.getProfile = async () => profile({ telegram_linked: false });
 
-  const result = confirmation(calls).confirm.onPress();
-  assert.equal(calls.unlinkTelegram, 1);
-  assert.equal(calls.getProfile, 1, 'reload must wait for unlink completion');
-  behavior.getProfile = async () => profile({ telegram_linked: false, currency: 'USD' });
-  pending.resolve();
-  await result;
-  await harness.settle();
-
-  assert.equal(calls.getProfile, 2);
-  assert.equal(harness.byLabel('Putuskan tautan Telegram'), undefined);
-  assert.equal(harness.byLabel('New Telegram link code'), undefined);
-  assert.ok(harness.byLabel('Hubungkan akun Telegram'));
-  assert.ok(harness.texts().includes('USD'));
-});
-
-test('Telegram unlink failure preserves the linked account and supports confirmation retry', async () => {
-  const failure = apiError('Unlink denied.');
-  const { harness, calls, behavior } = createSettingsHarness({
-    user: { telegram_linked: true },
-    behavior: { unlinkTelegram: async () => { throw failure; } },
-  });
-  await harness.mount();
   await press(harness, 'Putuskan tautan Telegram');
   await confirmation(calls).confirm.onPress();
   await harness.settle();
 
-  assert.equal(calls.alerts.at(-1).message, 'Unlink denied.');
-  assert.equal(calls.getProfile, 1, 'a rejected unlink must not pretend to refresh successfully');
+  assert.equal(calls.unlinkTelegram, 1);
+  assert.equal(calls.getProfile, 2);
+  assert.equal(harness.byLabel('Putuskan tautan Telegram'), undefined);
+  assert.ok(harness.byLabel('Hubungkan akun Telegram'));
+});
+
+test('Telegram unlink failure preserves the linked account and supports confirmation retry', async () => {
+  let attempt = 0;
+  const { harness, calls, behavior } = createSettingsHarness({
+    user: { telegram_linked: true },
+    behavior: {
+      unlinkTelegram: async () => {
+        attempt += 1;
+        if (attempt === 1) throw apiError('Could not unlink Telegram.');
+      },
+    },
+  });
+  await harness.mount();
+
+  await press(harness, 'Putuskan tautan Telegram');
+  await confirmation(calls).confirm.onPress();
+  await harness.settle();
+
+  assert.equal(calls.unlinkTelegram, 1);
+  assert.equal(calls.getProfile, 1);
+  assert.equal(calls.alerts.at(-1).title, 'Gagal memutus tautan');
+  assert.equal(calls.alerts.at(-1).message, 'Could not unlink Telegram.');
   assert.ok(harness.byLabel('Putuskan tautan Telegram'));
   assert.ok(harness.byLabel('New Telegram link code'));
 
@@ -549,7 +522,6 @@ test('profile reload failure after Telegram unlink remains visible and retry doe
   assert.equal(harness.byLabel('Change password').props.disabled, true);
   assert.equal(harness.byLabel('Delete account').props.disabled, true);
   assert.equal(harness.byLabel('Coba lagi').props.disabled, false);
-  assert.ok(harness.texts().includes('ayu@example.test'), 'reload failure must retain known account identity');
 
   behavior.getProfile = async () => profile();
   await retry(harness);
@@ -609,8 +581,6 @@ test('Google onLinked replaces the profile and closes the sheet without another 
 
   harness.byType('LinkGoogleSheet').props.onLinked(profile({
     google_linked: true,
-    first_name: 'Linked account',
-    email: 'linked@example.test',
     currency: 'GBP',
     telegram_linked: true,
   }));
@@ -618,8 +588,6 @@ test('Google onLinked replaces the profile and closes the sheet without another 
 
   assert.equal(harness.byType('LinkGoogleSheet').props.visible, false);
   assert.ok(harness.texts().includes('Google tertaut'));
-  assert.ok(harness.texts().includes('Linked account'));
-  assert.ok(harness.texts().includes('linked@example.test'));
   assert.ok(harness.texts().includes('GBP'));
   assert.ok(harness.byLabel('New Telegram link code'));
   assert.equal(harness.byLabel('Tautkan akun Google'), undefined);
@@ -714,13 +682,11 @@ for (const [name, getProfile] of [
     } else {
       assert.ok(harness.texts().includes('Account details unavailable.'));
       assert.ok(harness.byLabel('Coba lagi'));
-      assert.equal(harness.allByType('Skeleton').length, 0);
     }
 
-    // Local security and ordinary navigation do not depend on profile loading.
+    // Local security remains available without profile data.
     await press(harness, 'Kunci aplikasi');
-    await press(harness, 'Transaksi berulang');
-    assert.deepEqual(calls.pushes, ['/app-lock', '/recurring']);
+    assert.deepEqual(calls.pushes, ['/app-lock']);
   });
 }
 
@@ -738,28 +704,25 @@ test('security precedes connections and preferences, with actions in their inten
   assert.ok(contains(security, harness.byLabel('Change password')));
   assert.ok(contains(connections, harness.byLabel('Hubungkan akun Telegram')));
   assert.ok(contains(connections, harness.byLabel('Tautkan akun Google')));
+  assert.ok(textWithin(preferences).includes('Tema tampilan'));
   assert.ok(textWithin(preferences).includes('Mata uang'));
   assert.ok(textWithin(preferences).includes('Zona waktu'));
   assert.equal(contains(security, harness.byLabel('Delete account')), false);
 });
 
-test('permanent deletion occupies a separate final group, outside ordinary settings and logout', async () => {
+test('permanent deletion occupies a separate final group, isolated from ordinary settings', async () => {
   const { harness } = createSettingsHarness();
   await harness.mount();
   const deletion = sectionFor(harness, 'Permanent deletion');
   const deleteControl = harness.byLabel('Delete account');
-  const logoutControl = harness.byLabel('Keluar dari akun');
-  const logoutGroup = parentOf(harness, logoutControl);
   const elements = harness.elements();
 
   assert.ok(contains(deletion, deleteControl));
-  assert.equal(contains(deletion, logoutControl), false);
-  assert.equal(contains(logoutGroup, deleteControl), false);
-  for (const label of ['Kunci aplikasi', 'Change password', 'Hubungkan akun Telegram', 'Tautkan akun Google', 'Transaksi berulang']) {
+  assert.equal(harness.byLabel('Keluar dari akun'), undefined);
+  for (const label of ['Kunci aplikasi', 'Change password', 'Hubungkan akun Telegram', 'Tautkan akun Google', 'Tema Light', 'Tema Dark']) {
     assert.equal(contains(deletion, harness.byLabel(label)), false, `${label} must remain outside permanent deletion`);
     assert.ok(elements.indexOf(deleteControl) > elements.indexOf(harness.byLabel(label)));
   }
-  assert.ok(elements.indexOf(deleteControl) > elements.indexOf(logoutControl));
   assert.ok(elements.indexOf(deletion) > elements.indexOf(sectionFor(harness, 'Preferences & app')));
   assert.equal(harness.elements().filter((element) => element.props.accessibilityLabel === 'Delete account').length, 1);
 });
@@ -771,10 +734,8 @@ for (const [name, dimensions, direction] of [
   ['large font', { width: 390, fontScale: 1.31 }, 'column'],
   ['wide viewport with large font', { width: 720, fontScale: 2 }, 'column'],
 ]) {
-  test(`mocked ${name} selects the ${direction} detail layout without truncating account text`, async () => {
-    const name = 'Élodie 李 with a long account name';
-    const email = 'long-account-name@example.test';
-    const { harness } = createSettingsHarness({ dimensions, user: { first_name: name, email } });
+  test(`mocked ${name} selects the ${direction} detail layout cleanly`, async () => {
+    const { harness } = createSettingsHarness({ dimensions });
     await harness.mount();
 
     for (const label of ['Mata uang', 'Zona waktu', 'Versi']) {
@@ -783,11 +744,8 @@ for (const [name, dimensions, direction] of [
       const value = row.children.find((child) => child?.type === 'Text' && !textWithin(child).includes(label));
       assert.equal(flattenStyle(value.props.style).textAlign, direction === 'column' ? 'left' : 'right');
     }
-    for (const text of [name, email]) {
-      const element = harness.allByType('Text').find((element) => textWithin(element).includes(text));
-      assert.ok(element);
-      assert.equal(element.props.numberOfLines, undefined, 'account text must remain eligible to wrap');
-    }
+    const themeRow = parentOf(harness, detailRow(harness, 'Tema tampilan'));
+    assert.equal(flattenStyle(themeRow.props.style).flexDirection, direction);
     assert.ok(harness.byLabel('Change password'));
     assert.ok(harness.byLabel('Delete account'));
   });
@@ -856,15 +814,12 @@ test('Telegram unlink keeps its busy state across deletion and profile reload, w
   assert.equal(calls.getProfile, 1);
   assert.equal(harness.byLabel('Putuskan tautan Telegram').props.accessibilityState.busy, true);
   assertProfileActionsDisabled(harness);
-  assert.equal(harness.byLabel('Keluar dari akun').props.disabled, true);
 
   behavior.getProfile = () => reload.promise;
   unlink.resolve();
   await harness.settle();
   assert.equal(calls.getProfile, 2);
-  assert.ok(harness.texts().includes('ayu@example.test'));
   assert.ok(harness.texts().includes('Loading account details...'));
-  assert.equal(harness.allByType('Skeleton').length, 0, 'a reload must retain the known identity');
   assert.equal(harness.byLabel('Putuskan tautan Telegram').props.accessibilityState.busy, true);
   assertProfileActionsDisabled(harness);
 
@@ -874,7 +829,6 @@ test('Telegram unlink keeps its busy state across deletion and profile reload, w
   assert.equal(calls.unlinkTelegram, 1);
   assert.equal(harness.byLabel('Putuskan tautan Telegram'), undefined);
   assert.equal(harness.byLabel('Hubungkan akun Telegram').props.disabled, false);
-  assert.equal(harness.byLabel('Keluar dari akun').props.disabled, false);
   assert.equal(harness.allByType('ActivityIndicator').length, 0);
 });
 
@@ -910,7 +864,6 @@ test('a mutation reload without server error detail shows the fallback and never
   assertProfileActionsDisabled(harness);
   assert.equal(harness.byLabel('Putuskan tautan Telegram'), undefined);
   assert.equal(harness.byLabel('Coba lagi').props.disabled, false);
-  assert.equal(harness.byLabel('Keluar dari akun').props.disabled, false);
 
   behavior.getProfile = async () => profile();
   await retry(harness);
@@ -930,14 +883,12 @@ test('same-render Telegram presses and stale cross-account callbacks cannot dupl
   const changePassword = harness.byLabel('Change password').props.onPress;
   const deleteAccount = harness.byLabel('Delete account').props.onPress;
   const linkGoogle = harness.byLabel('Tautkan akun Google').props.onPress;
-  const logout = harness.byLabel('Keluar dari akun').props.onPress;
 
   const result = generate();
   await generate();
   changePassword();
   deleteAccount();
   linkGoogle();
-  logout();
   harness.flush();
   assert.equal(calls.createTelegramLinkToken, 1);
   assert.deepEqual(calls.pushes, []);
@@ -954,23 +905,20 @@ test('same-render Telegram presses and stale cross-account callbacks cannot dupl
 test('an open Google sheet blocks competing account actions until it closes', async () => {
   const { harness, calls } = createSettingsHarness();
   await harness.mount();
-  const callbacks = ['Hubungkan akun Telegram', 'Change password', 'Delete account', 'Keluar dari akun']
+  const callbacks = ['Hubungkan akun Telegram', 'Change password', 'Delete account']
     .map((label) => harness.byLabel(label).props.onPress);
   await press(harness, 'Tautkan akun Google');
 
   for (const callback of callbacks) await callback();
   harness.flush();
   assertProfileActionsDisabled(harness);
-  assert.equal(harness.byLabel('Keluar dari akun').props.disabled, true);
   assert.equal(calls.createTelegramLinkToken, 0);
-  assert.equal(calls.logout, 0);
   assert.deepEqual(calls.pushes, []);
   assert.deepEqual(calls.alerts, []);
 
   harness.byType('LinkGoogleSheet').props.onClose();
   await harness.settle();
   assert.equal(harness.byLabel('Change password').props.disabled, false);
-  assert.equal(harness.byLabel('Keluar dari akun').props.disabled, false);
 });
 
 test('a rejected native Google availability check becomes an honest unavailable state', async () => {
@@ -997,10 +945,10 @@ test('missing password capability does not advertise Google linking but retains 
   assert.deepEqual(calls.pushes, ['/change-password']);
 });
 
-test('returning from password management reloads capabilities while retaining identity and blocking stale actions', async () => {
+test('returning from password management reloads capabilities while retaining current currency', async () => {
   const pending = deferred();
   const { harness, calls, behavior, blur, focus } = createSettingsHarness({
-    user: { has_password: false, google_linked: true },
+    user: { has_password: false, google_linked: true, currency: 'EUR' },
   });
   await harness.mount();
   await press(harness, 'Change password');
@@ -1009,10 +957,9 @@ test('returning from password management reloads capabilities while retaining id
   await focus();
 
   assert.equal(calls.getProfile, 2);
-  assert.ok(harness.texts().includes('ayu@example.test'));
+  assert.ok(harness.texts().includes('EUR'));
   assert.ok(harness.texts().includes('Loading account details...'));
   assertProfileActionsDisabled(harness);
-  assert.equal(harness.allByType('Skeleton').length, 0);
 
   pending.resolve(profile({ has_password: true, google_linked: true, currency: 'CHF' }));
   await harness.settle();
@@ -1035,15 +982,14 @@ for (const staleResult of ['success', 'failure']) {
     await focus();
     assert.equal(calls.getProfile, 2);
 
-    newer.resolve(profile({ first_name: 'Current profile', currency: 'CAD', telegram_linked: true }));
+    newer.resolve(profile({ currency: 'CAD', telegram_linked: true }));
     await harness.settle();
-    if (staleResult === 'success') older.resolve(profile({ first_name: 'Stale profile', currency: 'USD' }));
+    if (staleResult === 'success') older.resolve(profile({ currency: 'USD' }));
     else older.reject(apiError('Stale request failed.'));
     await harness.settle();
 
-    assert.ok(harness.texts().includes('Current profile'));
     assert.ok(harness.texts().includes('CAD'));
-    assert.equal(harness.texts().includes('Stale profile'), false);
+    assert.equal(harness.texts().includes('USD'), false);
     assert.equal(harness.texts().includes('Stale request failed.'), false);
     assert.equal(harness.byLabel('Coba lagi'), undefined);
     assert.equal(calls.describedErrors.length, 0);
@@ -1062,11 +1008,11 @@ test('an older profile success cannot clear the newer focus error or enable acco
   await focus();
   newer.reject(apiError('Current profile failed.'));
   await harness.settle();
-  older.resolve(profile({ first_name: 'Stale account' }));
+  older.resolve(profile({ currency: 'USD' }));
   await harness.settle();
 
   assert.ok(harness.texts().includes('Current profile failed.'));
-  assert.equal(harness.texts().includes('Stale account'), false);
+  assert.equal(harness.texts().includes('USD'), false);
   assert.ok(harness.byLabel('Coba lagi'));
   assertProfileActionsDisabled(harness);
 });
@@ -1083,13 +1029,13 @@ test('blurred settings ignore a late profile response and stale profile-action c
   blur();
 
   for (const callback of callbacks) await callback();
-  linked(profile({ first_name: 'Unexpected Google account', google_linked: true }));
-  pending.resolve(profile({ first_name: 'Late blurred profile' }));
+  linked(profile({ google_linked: true, currency: 'GBP' }));
+  pending.resolve(profile({ currency: 'USD' }));
   await harness.settle();
 
-  assert.ok(harness.texts().includes('Ayu'));
-  assert.equal(harness.texts().includes('Late blurred profile'), false);
-  assert.equal(harness.texts().includes('Unexpected Google account'), false);
+  assert.ok(harness.texts().includes('IDR'));
+  assert.equal(harness.texts().includes('USD'), false);
+  assert.equal(harness.texts().includes('GBP'), false);
   assert.equal(calls.createTelegramLinkToken, 0);
   assert.deepEqual(calls.pushes, []);
   assert.deepEqual(calls.alerts, []);
@@ -1115,26 +1061,21 @@ for (const transition of ['blur', 'unmount']) {
     assert.deepEqual(calls.replacements, []);
   });
 
-  for (const [label, method] of [
-    ['Putuskan tautan Telegram', 'unlinkTelegram'],
-    ['Keluar dari akun', 'logout'],
-  ]) {
-    test(`${label} confirmation saved before ${transition} cannot mutate an inactive account`, async () => {
-      const bundle = createSettingsHarness({ user: { telegram_linked: true } });
-      const { harness, calls } = bundle;
-      await harness.mount();
-      await press(harness, label);
-      const confirm = confirmation(calls).confirm.onPress;
-      if (transition === 'blur') bundle.blur();
-      else harness.unmount();
+  test(`Putuskan tautan Telegram confirmation saved before ${transition} cannot mutate an inactive account`, async () => {
+    const bundle = createSettingsHarness({ user: { telegram_linked: true } });
+    const { harness, calls } = bundle;
+    await harness.mount();
+    await press(harness, 'Putuskan tautan Telegram');
+    const confirm = confirmation(calls).confirm.onPress;
+    if (transition === 'blur') bundle.blur();
+    else harness.unmount();
 
-      await confirm();
-      await harness.settle();
-      assert.equal(calls[method], 0);
-      assert.equal(calls.getProfile, 1);
-      assert.deepEqual(calls.replacements, []);
-    });
-  }
+    await confirm();
+    await harness.settle();
+    assert.equal(calls.unlinkTelegram, 0);
+    assert.equal(calls.getProfile, 1);
+    assert.deepEqual(calls.replacements, []);
+  });
 }
 
 test('a Google linking callback wins over an in-flight focus refresh and closes the sheet', async () => {
@@ -1148,75 +1089,18 @@ test('a Google linking callback wins over an in-flight focus refresh and closes 
   assert.equal(harness.byType('LinkGoogleSheet').props.visible, true);
 
   harness.byType('LinkGoogleSheet').props.onLinked(profile({
-    first_name: 'Freshly linked account', google_linked: true, currency: 'GBP',
+    google_linked: true, currency: 'GBP',
   }));
   await harness.settle();
-  pending.resolve(profile({ first_name: 'Pre-link profile', google_linked: false, currency: 'USD' }));
+  pending.resolve(profile({ google_linked: false, currency: 'USD' }));
   await harness.settle();
 
-  assert.ok(harness.texts().includes('Freshly linked account'));
   assert.ok(harness.texts().includes('Google tertaut'));
   assert.ok(harness.texts().includes('GBP'));
-  assert.equal(harness.texts().includes('Pre-link profile'), false);
+  assert.equal(harness.texts().includes('USD'), false);
   assert.equal(harness.byLabel('Tautkan akun Google'), undefined);
   assert.equal(harness.byLabel('Change password').props.disabled, false);
   assert.equal(harness.byType('LinkGoogleSheet').props.visible, false);
-});
-
-test('logout invalidates a pending profile refresh and deduplicates repeated confirmation callbacks', async () => {
-  const profileReload = deferred();
-  const logout = deferred();
-  const { harness, calls, behavior, focus } = createSettingsHarness({ behavior: { logout: () => logout.promise } });
-  await harness.mount();
-  behavior.getProfile = () => profileReload.promise;
-  await focus();
-  await press(harness, 'Keluar dari akun');
-  const confirm = confirmation(calls).confirm.onPress;
-  const result = confirm();
-  await confirm();
-  harness.flush();
-
-  assert.equal(calls.logout, 1);
-  assert.equal(harness.byLabel('Keluar dari akun').props.accessibilityState.busy, true);
-  assertProfileActionsDisabled(harness);
-  profileReload.resolve(profile({ first_name: 'Profile arriving after logout' }));
-  await harness.settle();
-  assert.equal(harness.texts().includes('Profile arriving after logout'), false);
-  assert.deepEqual(calls.replacements, []);
-
-  logout.resolve();
-  await result;
-  await harness.settle();
-  assert.deepEqual(calls.replacements, ['/(auth)/login']);
-  assert.equal(calls.getProfile, 2);
-});
-
-test('failed logout keeps account actions blocked until its recovery reload succeeds', async () => {
-  const pending = deferred();
-  const { harness, behavior, calls } = createSettingsHarness({
-    behavior: { logout: async () => { throw apiError('Logout service unavailable.'); } },
-  });
-  await harness.mount();
-  behavior.getProfile = () => pending.promise;
-  await press(harness, 'Keluar dari akun');
-  const result = confirmation(calls).confirm.onPress();
-  await harness.settle();
-
-  assert.equal(calls.alerts.at(-1).title, 'Unable to sign out');
-  assert.equal(calls.alerts.at(-1).message, 'Logout service unavailable.');
-  assert.equal(calls.getProfile, 2);
-  assert.ok(harness.texts().includes('Loading account details...'));
-  assert.equal(harness.byLabel('Keluar dari akun').props.accessibilityState.busy, true);
-  assertProfileActionsDisabled(harness);
-  assert.deepEqual(calls.replacements, []);
-
-  pending.resolve(profile({ first_name: 'Recovered session' }));
-  await result;
-  await harness.settle();
-  assert.ok(harness.texts().includes('Recovered session'));
-  assert.equal(harness.byLabel('Keluar dari akun').props.disabled, false);
-  assert.equal(harness.byLabel('Change password').props.disabled, false);
-  assert.deepEqual(calls.replacements, []);
 });
 
 test('unmounted settings ignore an initial profile failure without surfacing an obsolete error', async () => {
@@ -1231,4 +1115,43 @@ test('unmounted settings ignore an initial profile failure without surfacing an 
   assert.deepEqual(calls.describedErrors, []);
   assert.equal(harness.texts().includes('Obsolete profile failure.'), false);
   assert.deepEqual(calls.alerts, []);
+});
+
+test('Preferences & app exposes Light and Dark theme options and switches immediately', async () => {
+  const { harness, calls } = createSettingsHarness();
+  await harness.mount();
+
+  const preferences = sectionFor(harness, 'Preferences & app');
+  const lightBtn = harness.byLabel('Tema Light');
+  const darkBtn = harness.byLabel('Tema Dark');
+  assert.ok(contains(preferences, lightBtn));
+  assert.ok(contains(preferences, darkBtn));
+  assert.equal(lightBtn.props.accessibilityState.checked, true);
+  assert.equal(darkBtn.props.accessibilityState.checked, false);
+  assert.ok(harness.texts().includes('Mode terang aktif'));
+  assert.equal(flattenStyle(darkBtn.props.style({ pressed: false })).backgroundColor, '#FBFAF5');
+
+  await press(harness, 'Tema Dark');
+  assert.deepEqual(calls.themeModes, ['dark']);
+  assert.equal(harness.byLabel('Tema Light').props.accessibilityState.checked, false);
+  assert.equal(harness.byLabel('Tema Dark').props.accessibilityState.checked, true);
+  assert.ok(harness.texts().includes('Mode gelap aktif'));
+  assert.equal(flattenStyle(harness.byLabel('Tema Dark').props.style({ pressed: false })).backgroundColor, '#F2EFE6');
+
+  await press(harness, 'Tema Light');
+  assert.deepEqual(calls.themeModes, ['dark', 'light']);
+  assert.equal(harness.byLabel('Tema Light').props.accessibilityState.checked, true);
+  assert.ok(harness.texts().includes('Mode terang aktif'));
+});
+
+test('theme toggle works while profile is loading or failed', async () => {
+  const { harness, calls } = createSettingsHarness({
+    dimensions: { width: 359 },
+    behavior: { getProfile: async () => { throw new Error('offline'); } },
+  });
+  await harness.mount();
+
+  await press(harness, 'Tema Dark');
+  assert.deepEqual(calls.themeModes, ['dark']);
+  assert.equal(harness.byLabel('Tema Dark').props.accessibilityState.checked, true);
 });

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
-import { Colors } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 
 interface ProgressProps {
   /** 0-100. Clamped. */
@@ -11,7 +11,9 @@ interface ProgressProps {
 }
 
 /** Hairline-height progress rule, sized for dense ledger rows. */
-export function Progress({ value, color = Colors.ink, height = 4, style }: ProgressProps) {
+export function Progress({ value, color, height = 4, style }: ProgressProps) {
+  const theme = useTheme();
+  const styles = useStyles(theme);
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
 
   return (
@@ -20,18 +22,18 @@ export function Progress({ value, color = Colors.ink, height = 4, style }: Progr
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped) }}
     >
-      <View style={[styles.fill, { width: `${clamped}%`, backgroundColor: color, height }]} />
+      <View style={[styles.fill, { width: `${clamped}%`, backgroundColor: color ?? theme.colors.ink, height }]} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   track: {
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 999,
     overflow: 'hidden',
   },
   fill: {
     borderRadius: 999,
   },
-});
+}));

@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as RN from 'react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Category, TransactionBrowserFilters, TransactionType } from '../../types';
-import { Colors, Fonts, Space } from '../../utils/theme';
+import { Fonts, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import {
   EMPTY_FILTER_DRAFT,
   MAX_SEARCH_LENGTH,
@@ -52,6 +53,8 @@ export function TransactionFilters({
 }: TransactionFiltersProps) {
   const [draft, setDraft] = useState<TransactionFilterDraft>(() => filtersToDraft(filters));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const theme = useTheme();
+  const styles = useStyles(theme);
 
   // Parent renders must not wipe typed input. Re-seed only when the sheet opens,
   // reading the newest applied filters through a ref.
@@ -314,7 +317,7 @@ export function TransactionFilters({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors }) => StyleSheet.create({
   scroll: {
     flexGrow: 0,
     flexShrink: 1,
@@ -343,14 +346,14 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     marginBottom: Space.xs,
   },
   clearLink: {
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
     textDecorationLine: 'underline',
   },
   chips: {
@@ -363,11 +366,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.danger,
+    color: colors.danger,
   },
   footerWrap: {
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
     paddingTop: Space.md,
     gap: Space.xs,
   },
@@ -382,4 +385,4 @@ const styles = StyleSheet.create({
   footerPrimary: {
     flex: 1,
   },
-});
+}));

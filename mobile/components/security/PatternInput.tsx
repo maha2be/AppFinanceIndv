@@ -7,7 +7,8 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Colors, Fonts, Radius, Space, Type } from '../../utils/theme';
+import { Fonts, Radius, Space } from '../../utils/theme';
+import { createThemedStyles, useTheme } from '../../services/theme';
 import { appendPatternNode } from '../../utils/lockPattern';
 
 export interface PatternInputProps {
@@ -106,6 +107,8 @@ export function PatternInput({
 }: PatternInputProps) {
   const [boardSize, setBoardSize] = useState(DEFAULT_BOARD_SIZE);
   const [isDrawing, setIsDrawing] = useState(false);
+  const theme = useTheme();
+  const styles = useStyles(theme);
   const activePatternRef = useRef<number[]>(value);
   const drawingRef = useRef(false);
   const drawingChangeRef = useRef(onDrawingChange);
@@ -350,7 +353,7 @@ export function PatternInput({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = createThemedStyles(({ colors, type }) => StyleSheet.create({
   container: {
     gap: Space.sm,
   },
@@ -358,11 +361,11 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.medium,
     fontSize: 12,
     lineHeight: 16,
-    color: Colors.inkSoft,
+    color: colors.inkSoft,
   },
   hint: {
-    ...Type.caption,
-    color: Colors.inkMuted,
+    ...type.caption,
+    color: colors.inkMuted,
   },
   boardWrap: {
     width: '100%',
@@ -387,41 +390,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   nodeOuterSelected: {
-    backgroundColor: Colors.inkTint,
+    backgroundColor: colors.inkTint,
     borderWidth: 1,
-    borderColor: Colors.lineStrong,
+    borderColor: colors.lineStrong,
   },
   nodeOuterActiveHead: {
-    borderColor: Colors.ink,
+    borderColor: colors.ink,
     borderWidth: 1.5,
   },
   nodeDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: Colors.lineStrong,
+    backgroundColor: colors.lineStrong,
     borderWidth: 1.5,
-    borderColor: Colors.inkSoft,
+    borderColor: colors.inkSoft,
   },
   nodeDotSelected: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: Colors.ink,
+    backgroundColor: colors.ink,
     borderWidth: 0,
   },
   nodeDotEndpoint: {
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: Colors.ink,
+    backgroundColor: colors.ink,
     borderWidth: 0,
   },
   segment: {
     position: 'absolute',
     height: 2,
     borderRadius: 1,
-    backgroundColor: Colors.ink,
+    backgroundColor: colors.ink,
   },
   footerRow: {
     flexDirection: 'row',
@@ -430,11 +433,11 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     paddingTop: Space.xs,
     borderTopWidth: 1,
-    borderTopColor: Colors.line,
+    borderTopColor: colors.line,
   },
   counterText: {
-    ...Type.caption,
-    color: Colors.inkMuted,
+    ...type.caption,
+    color: colors.inkMuted,
     flex: 1,
     fontVariant: ['tabular-nums'],
   },
@@ -444,27 +447,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.md,
     borderRadius: Radius.control,
     borderWidth: 1,
-    borderColor: Colors.line,
-    backgroundColor: Colors.surface,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   clearButtonPressed: {
-    backgroundColor: Colors.surfaceAlt,
+    backgroundColor: colors.surfaceAlt,
   },
   clearButtonText: {
     fontFamily: Fonts.medium,
     fontSize: 13,
     lineHeight: 18,
-    color: Colors.ink,
+    color: colors.ink,
   },
   a11yCaption: {
-    ...Type.caption,
-    color: Colors.inkMuted,
+    ...type.caption,
+    color: colors.inkMuted,
   },
   controlDisabled: {
     opacity: 0.45,
   },
-});
+}));
 
 export default PatternInput;
