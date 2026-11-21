@@ -4,12 +4,17 @@
     "slug": "finance-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "scheme": "financeapp",
     "icon": "./assets/images/icon.png",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0111cb26-b0be-4302-b636-7b01b50a37cc"
+    },
     "android": {
       "package": "com.financeapp.mobile",
-      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#171A16",

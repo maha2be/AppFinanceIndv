@@ -1,0 +1,76 @@
+name: EAS Mobile Cloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Action: OTA JS update or cloud APK/AAB build on expo.dev"
+        required: true
+        default: "update"
+        type: choice
+        options:
+          - update
+          - build
+      profile:
+        description: "EAS channel / build profile"
+        required: true
+        default: "preview"
+        type: choice
+        options:
+          - preview
+          - production
+          - development
+      message:
+        description: "Optional update or build note"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  eas:
+    name: EAS ${{ inputs.mode }} (${{ inputs.profile }})
+    runs-on: ubuntu-latest
+    if: ${{ github.ref == 'refs/heads/main' }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: mobile/yarn.lock
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install JS dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run mobile verification
+        run: |
+          node --test --test-concurrency=2 tests/*.test.cjs
+          npx tsc --noEmit
+
+      - name: Publish EAS OTA Update (JS-only)
+        if: ${{ inputs.mode == 'update' }}
+        run: |
+          NOTE="${{ inputs.message }}"
+          if [ -z "$NOTE" ]; then
+            NOTE="${GITHUB_SHA::7} via GitHub Actions"
+          fi
+          EXPO_PUBLIC_API_URL="https://api-finindv.nikahbos.web.id" \
+            eas update --branch "${{ inputs.profile }}" --message "$NOTE" --non-interactive
+
+      - name: Trigger EAS Cloud Build (expo.dev)
+        if: ${{ inputs.mode == 'build' }}
+        run: |
+          NOTE="${{ inputs.message }}"
+          if [ -z "$NOTE" ]; then
+            NOTE="${GITHUB_SHA::7} via GitHub Actions"
+          fi
+          eas build --platform android --profile "${{ inputs.profile }}" --message "$NOTE" --non-interactive --no-wait
