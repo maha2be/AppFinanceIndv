@@ -34,7 +34,7 @@ export const TAB_SPOTLIGHT_ITEMS: readonly TutorialSpotlightTab[] = [
   { index: 0, label: 'Beranda', icon: 'book-outline', targetStepIndex: 0 },
   { index: 1, label: 'Catat', icon: 'add-circle-outline', targetStepIndex: 2 },
   { index: 2, label: 'Laporan', icon: 'stats-chart-outline', targetStepIndex: 3 },
-  { index: 3, label: 'Saya', icon: 'person-outline', targetStepIndex: 4 },
+  { index: 3, label: 'Saya', icon: 'person-outline', targetStepIndex: 5 },
 ];
 
 export const TUTORIAL_STEPS: readonly TutorialStep[] = [
@@ -50,7 +50,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     registerTitle: 'Selamat datang! Ini ringkasan kasmu',
     summary:
       'Kartu ini merangkum sisa bersih, pemasukan, pengeluaran, dan investasi. Ketuk tombol Hari / Minggu / Bulan di pojok kanan kartu untuk mengganti rentang laporan.',
-    tip: 'Tarik layar ke bawah kapan saja untuk menyegarkan saldo dan pengingat cicilan.',
+    tip: 'Pengingat cicilan jatuh tempo dan peringatan anggaran yang hampir penuh juga muncul otomatis di bagian atas Beranda.',
   },
   {
     id: 'home-quick-input',
@@ -78,16 +78,29 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
       'Gunakan tab Catat jika ingin memilih Pengeluaran, Pemasukan, atau Investasi, lalu atur kategori, nama aset, dan catatan secara manual.',
   },
   {
+    id: 'reports-cashflow',
+    badge: 'Arus kas pribadi',
+    tabIndex: 2,
+    tabRoute: '/(tabs)/reports',
+    scrollId: 'reports',
+    targetId: 'reports.cashflow',
+    icon: 'swap-vertical-outline',
+    title: 'Laporan arus kas pribadi',
+    summary:
+      'Memisahkan uang masuk & keluar menjadi Arus Kas Operasional, Investasi, serta Hutang & Piutang, lengkap dengan saving rate dan perbandingan periode lalu.',
+    tip: 'Ketuk ikon bagikan di pojok kartu untuk mengirim ringkasan arus kas ke WhatsApp atau catatan.',
+  },
+  {
     id: 'reports-charts',
-    badge: 'Tab Laporan',
+    badge: 'Grafik & Anggaran',
     tabIndex: 2,
     tabRoute: '/(tabs)/reports',
     scrollId: 'reports',
     targetId: 'reports.stability',
     icon: 'stats-chart-outline',
-    title: 'Arus kas pribadi & kurva kestabilan',
+    title: 'Kurva kestabilan & progres anggaran',
     summary:
-      'Pantau Arus Kas Operasional, Investasi, dan Hutang lengkap dengan perbandingan periode sebelumnya, kurva kestabilan, dan progres anggaran.',
+      'Pantau tren arus kas lewat Kurva Kestabilan (Saldo atau Arus), Diagram Lingkaran kategori, serta kartu Anggaran bulan ini tepat di bawahnya.',
   },
   {
     id: 'me-features',
@@ -97,9 +110,10 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     scrollId: 'me',
     targetId: 'me.features',
     icon: 'layers-outline',
-    title: 'Cicilan, anggaran & daftar belanja',
+    title: 'Anggaran, belanja, cicilan & jadwal',
     summary:
-      'Atur transaksi berulang otomatis, batas anggaran bulanan per kategori, cicilan dengan notifikasi jatuh tempo, serta rencana Daftar belanja.',
+      'Kelola Transaksi berulang, Hutang & piutang, Daftar belanja bulanan per grup, serta Anggaran pribadi dengan batas total maupun per kategori.',
+    tip: 'Item di Daftar belanja tidak memotong saldo sampai kamu menekan Catat ke pengeluaran.',
   },
   {
     id: 'me-settings',
@@ -111,7 +125,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     icon: 'shield-checkmark-outline',
     title: 'Keamanan, tema & tautan akun',
     summary:
-      'Buka Pengaturan untuk mengaktifkan Kunci aplikasi (PIN/pola/biometrik), tema Light/Dark, serta menautkan Bot Telegram & Google.',
+      'Buka Pengaturan untuk mengaktifkan Kunci aplikasi (PIN/pola/biometrik), tema Light/Dark, jam pengingat cicilan, serta menautkan Bot Telegram & Google.',
     tip: 'Ketuk "Panduan aplikasi" di sini kapan saja untuk memutar ulang tutorial.',
   },
 ];

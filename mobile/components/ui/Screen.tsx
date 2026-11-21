@@ -59,7 +59,9 @@ export function Screen({
     if (!scroll || !tutorialScrollId) return;
     return registerTutorialScrollArea(tutorialScrollId, {
       scrollTo: (y: number) => {
-        scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+        const nextY = Math.max(0, y);
+        scrollYRef.current = nextY;
+        scrollRef.current?.scrollTo({ y: nextY, animated: true });
       },
       getScrollY: () => scrollYRef.current,
     });

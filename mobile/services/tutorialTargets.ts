@@ -7,6 +7,7 @@ export type TutorialTargetId =
   | 'home.summary'
   | 'home.quickInput'
   | 'add.type'
+  | 'reports.cashflow'
   | 'reports.stability'
   | 'me.features'
   | 'me.settings';

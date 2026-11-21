@@ -19,6 +19,7 @@ import { Amount } from '../../components/ui/Amount';
 import { Card } from '../../components/ui/Card';
 import { Skeleton, SkeletonRows } from '../../components/ui/Skeleton';
 import { FadeIn } from '../../components/ui/FadeIn';
+import { TutorialTarget } from '../../components/tutorial/TutorialTarget';
 import { reportApi } from '../../services/reports';
 import { budgetApi } from '../../services/budgets';
 import { transactionApi } from '../../services/transactions';
@@ -130,8 +131,10 @@ export default function ReportsScreen() {
       </FadeIn>
 
       <FadeIn delay={75}>
-        <SectionHeader title="Arus kas pribadi" />
-        <CashFlowStatementCard report={cashFlow} />
+        <TutorialTarget id="reports.cashflow" trimBottom={Space.xl}>
+          <SectionHeader title="Arus kas pribadi" />
+          <CashFlowStatementCard report={cashFlow} />
+        </TutorialTarget>
       </FadeIn>
 
       <FadeIn delay={90}>

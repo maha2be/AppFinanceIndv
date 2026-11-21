@@ -177,6 +177,12 @@ test('TutorialHintOverlay renders spotlight cutout, auto-scrolls off-screen targ
     width: 350,
     height: 110,
   }));
+  targets.registerTutorialTarget('reports.cashflow', async () => ({
+    x: 20,
+    y: 160,
+    width: 350,
+    height: 250,
+  }));
   targets.registerTutorialTarget('reports.stability', async () => ({
     x: 20,
     y: 220,
@@ -292,7 +298,7 @@ test('TutorialHintOverlay renders spotlight cutout, auto-scrolls off-screen targ
   await new Promise((r) => setTimeout(r, 200));
   await harness.settle();
   assert.ok(harness.texts().includes('Selamat datang! Ini ringkasan kasmu'));
-  assert.ok(harness.texts().includes('1 / 6 · Beranda'));
+  assert.ok(harness.texts().includes('1 / 7 · Beranda'));
   assert.ok(harness.byLabel('Sorotan Beranda'), 'spotlight highlight ring must render');
   assert.ok(harness.allByType('Svg').length >= 1 && harness.allByType('Path').length >= 1);
   assert.match(harness.allByType('Path')[0].props.d, /^M 0 0 H 390 V 844 H 0 Z M /);
@@ -306,24 +312,33 @@ test('TutorialHintOverlay renders spotlight cutout, auto-scrolls off-screen targ
   assert.ok(harness.texts().includes('"crypto xrp 150000"'));
   assert.ok(harness.byLabel('Sorotan Catat cepat'));
 
-  // Jump via spotlight bar directly to Laporan (Step 4 -> tab index 2).
+  // Jump via spotlight bar directly to Laporan (Step 4: Arus kas pribadi).
   await harness.press('Lihat panduan tab Laporan');
   await new Promise((r) => setTimeout(r, 200));
   await harness.settle();
-  assert.ok(harness.texts().includes('Arus kas pribadi & kurva kestabilan'));
+  assert.ok(harness.texts().includes('Laporan arus kas pribadi'));
   assert.equal(navigated.at(-1), '/(tabs)/reports');
-  assert.ok(harness.byLabel('Sorotan Tab Laporan'));
+  assert.ok(harness.byLabel('Sorotan Arus kas pribadi'));
 
-  // Hardware back steps backward to Step 3 (Tab Catat).
+  // Advance to Step 5 (Kurva kestabilan & progres anggaran).
+  await harness.press('Lanjut');
+  await new Promise((r) => setTimeout(r, 200));
+  await harness.settle();
+  assert.ok(harness.texts().includes('Kurva kestabilan & progres anggaran'));
+  assert.ok(harness.byLabel('Sorotan Grafik & Anggaran'));
+
+  // Hardware back twice -> Step 3 (Tab Catat).
   assert.equal(backListeners.length, 1);
+  backListeners[0]();
+  await harness.settle();
   backListeners[0]();
   await harness.settle();
   assert.ok(harness.texts().includes('Pilih jenis & isi form lengkap'));
   assert.equal(navigated.at(-1), '/(tabs)/add');
 
-  // Jump to Saya (Step 5) then advance to Step 6 (me.settings off-screen -> auto-scrolls).
+  // Jump to Saya (Step 6) then advance to Step 7 (me.settings off-screen -> auto-scrolls).
   await harness.press('Lihat panduan tab Saya');
-  assert.ok(harness.texts().includes('Cicilan, anggaran & daftar belanja'));
+  assert.ok(harness.texts().includes('Anggaran, belanja, cicilan & jadwal'));
   await harness.press('Lanjut');
   await new Promise((r) => setTimeout(r, 500));
   await harness.settle();
