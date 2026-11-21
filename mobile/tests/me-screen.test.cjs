@@ -47,6 +47,7 @@ function createMeHarness(options = {}) {
   const calls = {
     getProfile: 0,
     logout: 0,
+    openTutorialGuide: 0,
     alerts: [],
     pushes: [],
     replacements: [],
@@ -120,6 +121,11 @@ function createMeHarness(options = {}) {
       '../../services/appLock': {
         getAppLockState: () => lockState,
         subscribeAppLock: () => () => {},
+      },
+      '../../services/tutorialHint': {
+        openTutorialGuide: () => {
+          calls.openTutorialGuide += 1;
+        },
       },
       '../../services/theme': {
         useTheme: () => ({
@@ -302,15 +308,25 @@ test('Saya organizes personal finance features, Pengaturan, and Keluar cleanly',
   assert.ok(contains(features, harness.byLabel('Hutang & piutang')));
   assert.ok(contains(features, harness.byLabel('Riwayat perubahan')));
   assert.ok(contains(appSection, harness.byLabel('Pengaturan')));
+  assert.ok(contains(appSection, harness.byLabel('Panduan aplikasi')));
   assert.match(
     textWithin(harness.byLabel('Pengaturan')).join(' '),
     /Kunci aktif · Tema Dark · Akun terhubung/
   );
   assert.ok(
     elements.indexOf(harness.byLabel('Keluar dari akun')) >
-    elements.indexOf(harness.byLabel('Pengaturan'))
+    elements.indexOf(harness.byLabel('Panduan aplikasi'))
   );
   assert.equal(harness.byLabel('Delete account'), undefined);
+});
+
+test('Panduan aplikasi opens the tutorial hint guide on demand', async () => {
+  const { harness, calls } = createMeHarness();
+  await harness.mount();
+
+  await press(harness, 'Panduan aplikasi');
+  assert.equal(calls.openTutorialGuide, 1);
+  assert.deepEqual(calls.pushes, []);
 });
 
 test('logout cancellation keeps the current session and does not navigate', async () => {

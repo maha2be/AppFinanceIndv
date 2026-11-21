@@ -1,7 +1,7 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Fonts } from '../utils/theme';
 import { createThemedStyles, hydrateTheme, useTheme } from '../services/theme';
@@ -10,7 +10,14 @@ import { clearSession, hydrateSession, isAuthenticated, subscribeSession } from 
 import {
   getAppLockState, handleAppLockState, hydrateAppLock, subscribeAppLock,
 } from '../services/appLock';
+import {
+  activatePendingTutorial,
+  getTutorialHintState,
+  resetTutorialHint,
+  subscribeTutorialHint,
+} from '../services/tutorialHint';
 import { AppLockView } from '../components/security/AppLockView';
+import { TutorialHintOverlay } from '../components/tutorial/TutorialHintOverlay';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppAlertHost } from '../components/security/AppAlertHost';
 
@@ -26,10 +33,23 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
   const appLock = useSyncExternalStore(subscribeAppLock, getAppLockState, getAppLockState);
+  const tutorial = useSyncExternalStore(
+    subscribeTutorialHint,
+    getTutorialHintState,
+    getTutorialHintState
+  );
   const theme = useTheme();
   const { colors, isDark } = theme;
   const styles = useStyles(theme);
   const gated = authed && (!appLock.ready || appLock.locked || appLock.covered);
+  const inAuthGroup = segments[0] === '(auth)';
+
+  const handleNavigateTab = useCallback(
+    (route: string) => {
+      router.navigate(route as never);
+    },
+    [router]
+  );
 
   useEffect(() => {
     if (!gated) return;
@@ -104,13 +124,23 @@ export default function RootLayout() {
     if (!ready) {
       return;
     }
-    const inAuthGroup = segments[0] === '(auth)';
     if (!authed && !inAuthGroup) {
       router.replace('/(auth)/login');
     } else if (authed && inAuthGroup) {
       router.replace('/(tabs)');
     }
-  }, [authed, ready, router, segments]);
+  }, [authed, inAuthGroup, ready, router]);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!authed) {
+      resetTutorialHint();
+      return;
+    }
+    if (!gated && !inAuthGroup && tutorial.pendingAfterUnlock) {
+      activatePendingTutorial();
+    }
+  }, [authed, gated, inAuthGroup, ready, tutorial.pendingAfterUnlock]);
 
   const booting = !ready || (!fontsLoaded && !fontError);
 
@@ -156,6 +186,12 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)/register" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)/forgot-password" options={{ headerShown: false }} />
       </Stack>
+      <TutorialHintOverlay
+        authed={authed}
+        gated={gated}
+        inAuthGroup={inAuthGroup}
+        onNavigateTab={handleNavigateTab}
+      />
       </View>
       {gated ? (
         <View style={styles.lockCover} accessibilityViewIsModal>

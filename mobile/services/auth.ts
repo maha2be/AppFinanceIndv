@@ -3,6 +3,7 @@ import { api } from './api';
 import { signOutGoogle } from './googleAuth';
 import { clearSession, saveSession } from './session';
 import { resetAppLockAfterSignIn } from './appLock';
+import { queueTutorialOnSignIn, resetTutorialHint } from './tutorialHint';
 import {
   AuthResponse,
   ForgotPasswordResponse,
@@ -19,6 +20,7 @@ export const authApi = {
     const res = await api.post<AuthResponse>('/api/auth/register', params);
     await resetAppLockAfterSignIn();
     await saveSession(res.data);
+    queueTutorialOnSignIn?.('register');
     return res.data;
   },
 
@@ -26,6 +28,7 @@ export const authApi = {
     const res = await api.post<AuthResponse>('/api/auth/login', params);
     await resetAppLockAfterSignIn();
     await saveSession(res.data);
+    queueTutorialOnSignIn?.('login');
     return res.data;
   },
 
@@ -48,6 +51,7 @@ export const authApi = {
     });
     await resetAppLockAfterSignIn();
     await saveSession(res.data);
+    queueTutorialOnSignIn?.('login');
     return res.data;
   },
 
@@ -89,6 +93,7 @@ export const authApi = {
   }): Promise<void> {
     await api.delete('/api/auth/account', { data: params });
     await signOutGoogle();
+    resetTutorialHint?.();
     await clearSession();
   },
 
@@ -110,6 +115,7 @@ export const authApi = {
       // The token may already be expired; clearing local state is enough.
     }
     await signOutGoogle();
+    resetTutorialHint?.();
     await clearSession();
   },
 };

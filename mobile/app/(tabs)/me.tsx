@@ -12,6 +12,7 @@ import { FadeIn } from '../../components/ui/FadeIn';
 import { EditProfileSheet } from '../../components/profile/EditProfileSheet';
 import { authApi, describeApiError } from '../../services/auth';
 import { getAppLockState, subscribeAppLock } from '../../services/appLock';
+import { openTutorialGuide } from '../../services/tutorialHint';
 
 export default function MeScreen() {
   const [user, setUser] = useState<User | null>(null);
@@ -237,6 +238,15 @@ export default function MeScreen() {
             title="Pengaturan"
             hint={settingsHint}
             onPress={() => router.push('/settings')}
+            disabled={accountBusy}
+            styles={styles}
+            colors={colors}
+          />
+          <MenuRow
+            icon="compass-outline"
+            title="Panduan aplikasi"
+            hint="Lihat ulang ringkasan tampilan dan fitur utama"
+            onPress={openTutorialGuide}
             disabled={accountBusy}
             styles={styles}
             colors={colors}
