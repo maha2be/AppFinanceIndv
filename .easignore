@@ -37,7 +37,6 @@ temp/
 /mobile/tests/
 /mobile/__tests__/
 /mobile/docs/
-/mobile/.gitignore
 /mobile/expo-env.d.ts
 **/__mocks__/
 **/*.test.*
