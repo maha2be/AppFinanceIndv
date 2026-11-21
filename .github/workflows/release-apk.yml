@@ -73,13 +73,26 @@ jobs:
           if [ -n "$INPUT_BUILD_ID" ]; then
             eas build:view "$INPUT_BUILD_ID" --json > eas-build.json
           else
-            eas build \
+            eas build:list \
               --platform android \
-              --profile "$PROFILE" \
-              --message "GitHub Release $TAG ($PROFILE)" \
-              --wait \
+              --build-profile "$PROFILE" \
+              --status finished \
+              --git-commit-hash "$GITHUB_SHA" \
+              --limit 1 \
               --json \
-              --non-interactive > eas-build.json
+              --non-interactive > existing-builds.json
+            if node -e "const b = JSON.parse(require('fs').readFileSync('existing-builds.json','utf8')); process.exit(Array.isArray(b) && b[0]?.artifacts?.buildUrl ? 0 : 1)"; then
+              echo "Reusing existing finished EAS build for commit $GITHUB_SHA"
+              cp existing-builds.json eas-build.json
+            else
+              eas build \
+                --platform android \
+                --profile "$PROFILE" \
+                --message "GitHub Release $TAG ($PROFILE)" \
+                --wait \
+                --json \
+                --non-interactive > eas-build.json
+            fi
           fi
 
           node - <<'JS'
