@@ -12,7 +12,7 @@ from collections.abc import Callable
 
 from .postgres_schema import run_postgres_migrations
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def _create_core_tables(connection: sqlite3.Connection) -> None:
@@ -468,6 +468,32 @@ def _migration_10(connection: sqlite3.Connection) -> None:
     )
 
 
+def _migration_11(connection: sqlite3.Connection) -> None:
+    """Add monthly overall and per-category personal expense budgets."""
+
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS budgets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL CHECK (amount > 0),
+            alert_threshold INTEGER NOT NULL DEFAULT 80 CHECK (alert_threshold BETWEEN 1 AND 100),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_budgets_user_overall "
+        "ON budgets (user_id) WHERE category_id IS NULL"
+    )
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_budgets_user_category "
+        "ON budgets (user_id, category_id) WHERE category_id IS NOT NULL"
+    )
+
+
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _migration_1,
     2: _migration_2,
@@ -479,6 +505,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     8: _migration_8,
     9: _migration_9,
     10: _migration_10,
+    11: _migration_11,
 }
 
 

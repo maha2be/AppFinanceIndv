@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date, timedelta
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -12,6 +12,7 @@ from finance_core.db.transactions import list_transactions_in_range
 from finance_core.db.users import AppUser
 from finance_core.reports.aggregator import (
     aggregate_by_category,
+    aggregate_cash_flow,
     aggregate_daily_series,
     aggregate_investments,
     aggregate_transactions,
@@ -26,6 +27,10 @@ from finance_core.timezones import today_in
 
 from ..auth.dependencies import get_current_user, get_db
 from ..models.schemas import (
+    CashFlowComparisonItem,
+    CashFlowReportResponse,
+    CashFlowSnapshotItem,
+    CashFlowSummaryItem,
     CategoryBreakdownResponse,
     CategoryTotalItem,
     DailyFlowPointItem,
@@ -246,4 +251,121 @@ def get_investment_report(
             CategoryTotalItem(name=item.name, amount=item.amount, percentage=item.percentage)
             for item in by_asset
         ],
+    )
+
+
+def _pct_delta(current: int, previous: int) -> float | None:
+    if previous <= 0:
+        return None
+    return round(((current - previous) / previous) * 100, 1)
+
+
+@router.get("/cash-flow", response_model=CashFlowReportResponse)
+def get_cash_flow_report(
+    period: Literal["daily", "weekly", "monthly"] = Query("monthly"),
+    year: Optional[int] = Query(None, ge=1970, le=2100),
+    month: Optional[int] = Query(None, ge=1, le=12),
+    target_date: Optional[date] = Query(None),
+    current_user: AppUser = Depends(get_current_user),
+    db: sqlite3.Connection = Depends(get_db),
+) -> CashFlowReportResponse:
+    """Return structured Operating, Investing, and Financing cash flows with prior comparison."""
+
+    reference = target_date or today_in(current_user.timezone)
+    if period == "daily":
+        current_range = today_range(reference)
+        prev_ref = reference - timedelta(days=1)
+        prev_range = today_range(prev_ref)
+        title = (
+            f"Arus Kas Harian ({reference.day} {_MONTH_NAMES_ID[reference.month - 1]} "
+            f"{reference.year})"
+        )
+        previous_title = (
+            f"{prev_ref.day} {_MONTH_NAMES_ID[prev_ref.month - 1]} {prev_ref.year}"
+        )
+    elif period == "weekly":
+        current_range = week_range(reference)
+        prev_ref = current_range.start_date - timedelta(days=7)
+        prev_range = week_range(prev_ref)
+        cs, ce = current_range.start_date, current_range.end_date
+        ps, pe = prev_range.start_date, prev_range.end_date
+        title = (
+            f"Arus Kas Mingguan ({cs.day} {_MONTH_NAMES_ID[cs.month - 1]} - "
+            f"{ce.day} {_MONTH_NAMES_ID[ce.month - 1]} {ce.year})"
+        )
+        previous_title = (
+            f"{ps.day} {_MONTH_NAMES_ID[ps.month - 1]} - "
+            f"{pe.day} {_MONTH_NAMES_ID[pe.month - 1]} {pe.year}"
+        )
+    else:
+        target_year = year or reference.year
+        target_month = month or reference.month
+        current_anchor = date(target_year, target_month, 1)
+        current_range = month_range(current_anchor)
+        prev_anchor = current_anchor - timedelta(days=1)
+        prev_range = month_range(prev_anchor)
+        title = f"Arus Kas {_MONTH_NAMES_ID[target_month - 1]} {target_year}"
+        previous_title = f"{_MONTH_NAMES_ID[prev_anchor.month - 1]} {prev_anchor.year}"
+
+    current_txs = list_transactions_in_range(
+        db,
+        user_id=current_user.id,
+        start_date=current_range.start_date.isoformat(),
+        end_date=current_range.end_date.isoformat(),
+    )
+    prev_txs = list_transactions_in_range(
+        db,
+        user_id=current_user.id,
+        start_date=prev_range.start_date.isoformat(),
+        end_date=prev_range.end_date.isoformat(),
+    )
+
+    current_cf = aggregate_cash_flow(current_txs)
+    prev_cf = aggregate_cash_flow(prev_txs)
+
+    return CashFlowReportResponse(
+        title=title,
+        period=period,
+        start_date=current_range.start_date.isoformat(),
+        end_date=current_range.end_date.isoformat(),
+        previous_title=previous_title,
+        previous_start_date=prev_range.start_date.isoformat(),
+        previous_end_date=prev_range.end_date.isoformat(),
+        current=CashFlowSummaryItem(
+            operating_inflow=current_cf.operating_inflow,
+            operating_outflow=current_cf.operating_outflow,
+            operating_net=current_cf.operating_net,
+            investing_outflow=current_cf.investing_outflow,
+            financing_inflow=current_cf.financing_inflow,
+            financing_outflow=current_cf.financing_outflow,
+            financing_net=current_cf.financing_net,
+            net_cash_flow=current_cf.net_cash_flow,
+            saving_rate_pct=current_cf.saving_rate_pct,
+            operating_income_breakdown=[
+                CategoryTotalItem(name=item.name, amount=item.amount, percentage=item.percentage)
+                for item in current_cf.operating_income_breakdown
+            ],
+            operating_expense_breakdown=[
+                CategoryTotalItem(name=item.name, amount=item.amount, percentage=item.percentage)
+                for item in current_cf.operating_expense_breakdown
+            ],
+        ),
+        previous=CashFlowSnapshotItem(
+            operating_inflow=prev_cf.operating_inflow,
+            operating_outflow=prev_cf.operating_outflow,
+            operating_net=prev_cf.operating_net,
+            investing_outflow=prev_cf.investing_outflow,
+            financing_net=prev_cf.financing_net,
+            net_cash_flow=prev_cf.net_cash_flow,
+        ),
+        comparison=CashFlowComparisonItem(
+            net_delta=current_cf.net_cash_flow - prev_cf.net_cash_flow,
+            operating_net_delta=current_cf.operating_net - prev_cf.operating_net,
+            operating_inflow_delta_pct=_pct_delta(
+                current_cf.operating_inflow, prev_cf.operating_inflow
+            ),
+            operating_outflow_delta_pct=_pct_delta(
+                current_cf.operating_outflow, prev_cf.operating_outflow
+            ),
+        ),
     )

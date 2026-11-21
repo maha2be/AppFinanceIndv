@@ -136,6 +136,10 @@ TABLES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "updated_at",
         ),
     ),
+    (
+        "budgets",
+        ("id", "user_id", "category_id", "amount", "alert_threshold", "created_at", "updated_at"),
+    ),
 )
 
 

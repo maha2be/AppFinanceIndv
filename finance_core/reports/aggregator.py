@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from ..db.transactions import Transaction
+from ..db.transactions import Transaction, is_derived_transaction
 
 
 @dataclass(frozen=True)
@@ -213,3 +213,95 @@ def aggregate_daily_series(
         cursor += timedelta(days=1)
 
     return points
+
+
+@dataclass(frozen=True)
+class CashFlowSummary:
+    """Structured personal cash flow across Operating, Investing, and Financing."""
+
+    operating_inflow: int
+    operating_outflow: int
+    operating_net: int
+    investing_outflow: int
+    financing_inflow: int
+    financing_outflow: int
+    financing_net: int
+    net_cash_flow: int
+    saving_rate_pct: float
+    operating_income_breakdown: list[CategoryTotal]
+    operating_expense_breakdown: list[CategoryTotal]
+
+
+def _sorted_category_totals(
+    totals: dict[str, int],
+    grand_total: int,
+) -> list[CategoryTotal]:
+    return [
+        CategoryTotal(
+            name=name,
+            amount=amount,
+            percentage=round((amount / grand_total * 100), 1) if grand_total > 0 else 0.0,
+        )
+        for name, amount in sorted(totals.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+
+def aggregate_cash_flow(
+    transactions: list[Transaction],
+    *,
+    category_names: dict[int, str] | None = None,
+) -> CashFlowSummary:
+    """Group transactions into Operating, Investing, and Debt/Financing cash flows."""
+
+    names = category_names or {}
+    operating_inflow = 0
+    operating_outflow = 0
+    investing_outflow = 0
+    financing_inflow = 0
+    financing_outflow = 0
+
+    op_income_by_cat: dict[str, int] = defaultdict(int)
+    op_expense_by_cat: dict[str, int] = defaultdict(int)
+
+    for tx in transactions:
+        cat_name = tx.category_name or names.get(tx.category_id or 0, "Lainnya")
+        if tx.type == "investment":
+            investing_outflow += tx.amount
+            continue
+
+        if is_derived_transaction(tx):
+            if tx.type == "income":
+                financing_inflow += tx.amount
+            elif tx.type == "expense":
+                financing_outflow += tx.amount
+            continue
+
+        if tx.type == "income":
+            operating_inflow += tx.amount
+            op_income_by_cat[cat_name] += tx.amount
+        elif tx.type == "expense":
+            operating_outflow += tx.amount
+            op_expense_by_cat[cat_name] += tx.amount
+
+    operating_net = operating_inflow - operating_outflow
+    financing_net = financing_inflow - financing_outflow
+    net_cash_flow = operating_net - investing_outflow + financing_net
+    saving_rate_pct = (
+        round((operating_net / operating_inflow) * 100, 1)
+        if operating_inflow > 0
+        else 0.0
+    )
+
+    return CashFlowSummary(
+        operating_inflow=operating_inflow,
+        operating_outflow=operating_outflow,
+        operating_net=operating_net,
+        investing_outflow=investing_outflow,
+        financing_inflow=financing_inflow,
+        financing_outflow=financing_outflow,
+        financing_net=financing_net,
+        net_cash_flow=net_cash_flow,
+        saving_rate_pct=saving_rate_pct,
+        operating_income_breakdown=_sorted_category_totals(op_income_by_cat, operating_inflow),
+        operating_expense_breakdown=_sorted_category_totals(op_expense_by_cat, operating_outflow),
+    )

@@ -85,9 +85,9 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     scrollId: 'reports',
     targetId: 'reports.stability',
     icon: 'stats-chart-outline',
-    title: 'Kurva kestabilan & rincian arus kas',
+    title: 'Arus kas pribadi & kurva kestabilan',
     summary:
-      'Pantau ritme arus kas lewat Kurva Kestabilan (Saldo atau Arus) dan Diagram Lingkaran untuk melihat pos pengeluaran terbesar.',
+      'Pantau Arus Kas Operasional, Investasi, dan Hutang lengkap dengan perbandingan periode sebelumnya, kurva kestabilan, dan progres anggaran.',
   },
   {
     id: 'me-features',
@@ -97,9 +97,9 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     scrollId: 'me',
     targetId: 'me.features',
     icon: 'layers-outline',
-    title: 'Cicilan, jadwal rutin & daftar belanja',
+    title: 'Cicilan, anggaran & daftar belanja',
     summary:
-      'Atur transaksi berulang otomatis, pantau hutang & piutang dengan notifikasi jatuh tempo, serta rencanakan Daftar belanja tanpa memotong saldo sebelum dicatat.',
+      'Atur transaksi berulang otomatis, batas anggaran bulanan per kategori, cicilan dengan notifikasi jatuh tempo, serta rencana Daftar belanja.',
   },
   {
     id: 'me-settings',

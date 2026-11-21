@@ -177,6 +177,49 @@ export interface InvestmentReport {
   by_asset: CategoryTotalItem[];
 }
 
+export interface CashFlowSummary {
+  operating_inflow: number;
+  operating_outflow: number;
+  operating_net: number;
+  investing_outflow: number;
+  financing_inflow: number;
+  financing_outflow: number;
+  financing_net: number;
+  net_cash_flow: number;
+  saving_rate_pct: number;
+  operating_income_breakdown: CategoryTotalItem[];
+  operating_expense_breakdown: CategoryTotalItem[];
+}
+
+export interface CashFlowSnapshot {
+  operating_inflow: number;
+  operating_outflow: number;
+  operating_net: number;
+  investing_outflow: number;
+  financing_net: number;
+  net_cash_flow: number;
+}
+
+export interface CashFlowComparison {
+  net_delta: number;
+  operating_net_delta: number;
+  operating_inflow_delta_pct?: number | null;
+  operating_outflow_delta_pct?: number | null;
+}
+
+export interface CashFlowReport {
+  title: string;
+  period: 'daily' | 'weekly' | 'monthly';
+  start_date: string;
+  end_date: string;
+  previous_title: string;
+  previous_start_date: string;
+  previous_end_date: string;
+  current: CashFlowSummary;
+  previous: CashFlowSnapshot;
+  comparison: CashFlowComparison;
+}
+
 // --- Debt / Receivable Types ---
 
 export type DebtType = 'debt' | 'receivable';
@@ -291,5 +334,46 @@ export interface ShoppingListDetail extends ShoppingListSummary {
 export interface ShoppingListRecordExpenseResult {
   transaction: Transaction;
   shopping_list: ShoppingListDetail;
+}
+
+// --- Budget Types ---
+
+export type BudgetStatus = 'safe' | 'warning' | 'exceeded';
+
+export interface Budget {
+  id: number;
+  user_id: number;
+  category_id?: number | null;
+  category_name?: string | null;
+  amount: number;
+  alert_threshold: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BudgetProgress {
+  id: number;
+  user_id: number;
+  category_id?: number | null;
+  category_name?: string | null;
+  amount: number;
+  spent: number;
+  remaining: number;
+  percentage: number;
+  alert_threshold: number;
+  status: BudgetStatus;
+}
+
+export interface BudgetOverview {
+  year: number;
+  month: number;
+  start_date: string;
+  end_date: string;
+  total_expense: number;
+  overall_budget?: BudgetProgress | null;
+  category_budgets: BudgetProgress[];
+  allocated_category_total: number;
+  warning_count: number;
+  exceeded_count: number;
 }
 

@@ -158,7 +158,7 @@ def test_shopping_list_postgres_portability() -> None:
     import psycopg
 
     from finance_core.db.connection import connect_url
-    from finance_core.db.migrations import run_migrations
+    from finance_core.db.migrations import SCHEMA_VERSION, run_migrations
     from finance_core.db.shopping_lists import (
         create_shopping_list,
         record_shopping_list_expense,
@@ -174,7 +174,7 @@ def test_shopping_list_postgres_portability() -> None:
     try:
         conn = connect_url(scoped_url)
         try:
-            assert run_migrations(conn) == 10
+            assert run_migrations(conn) == SCHEMA_VERSION
             user = create_mobile_user(conn, email="pgshop@example.com", password_hash="unused")
             summary, _items = create_shopping_list(
                 conn,

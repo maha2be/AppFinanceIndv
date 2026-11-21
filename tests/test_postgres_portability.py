@@ -77,13 +77,13 @@ def test_postgres_schema_reaches_current_version(postgres_url):
 
     connection = connect_url(postgres_url)
     try:
-        assert run_migrations(connection) == 10
-        assert run_migrations(connection) == 10
-        assert current_version(connection) == 10
+        assert run_migrations(connection) == 11
+        assert run_migrations(connection) == 11
+        assert current_version(connection) == 11
         versions = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         assert connection.execute(
             "SELECT relrowsecurity FROM pg_class WHERE oid = 'transaction_audit'::regclass"
         ).fetchone()[0] is True
@@ -171,8 +171,8 @@ def test_postgres_upgrade_from_seven_preserves_live_transactions(postgres_url, m
         )
         connection.commit()
 
-        assert run_migrations(connection) == 10
-        assert run_migrations(connection) == current_version(connection) == 10
+        assert run_migrations(connection) == 11
+        assert run_migrations(connection) == current_version(connection) == 11
         assert list_transaction_history(connection, user_id=owner_id) == []
         update_transaction(
             connection, user_id=owner_id, transaction_id=existing.id, amount=200, source="api",

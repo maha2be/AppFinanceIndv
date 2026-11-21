@@ -1,5 +1,6 @@
 import { api } from './api';
 import {
+  CashFlowReport,
   CategoryBreakdown,
   InvestmentReport,
   PeriodReport,
@@ -44,6 +45,18 @@ export const reportApi = {
     end_date?: string;
   }): Promise<InvestmentReport> {
     const res = await api.get<InvestmentReport>('/api/reports/investment', {
+      params,
+    });
+    return res.data;
+  },
+
+  async getCashFlowReport(params?: {
+    period?: 'daily' | 'weekly' | 'monthly';
+    year?: number;
+    month?: number;
+    target_date?: string;
+  }): Promise<CashFlowReport> {
+    const res = await api.get<CashFlowReport>('/api/reports/cash-flow', {
       params,
     });
     return res.data;

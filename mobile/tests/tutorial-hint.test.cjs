@@ -310,7 +310,7 @@ test('TutorialHintOverlay renders spotlight cutout, auto-scrolls off-screen targ
   await harness.press('Lihat panduan tab Laporan');
   await new Promise((r) => setTimeout(r, 200));
   await harness.settle();
-  assert.ok(harness.texts().includes('Kurva kestabilan & rincian arus kas'));
+  assert.ok(harness.texts().includes('Arus kas pribadi & kurva kestabilan'));
   assert.equal(navigated.at(-1), '/(tabs)/reports');
   assert.ok(harness.byLabel('Sorotan Tab Laporan'));
 
@@ -323,7 +323,7 @@ test('TutorialHintOverlay renders spotlight cutout, auto-scrolls off-screen targ
 
   // Jump to Saya (Step 5) then advance to Step 6 (me.settings off-screen -> auto-scrolls).
   await harness.press('Lihat panduan tab Saya');
-  assert.ok(harness.texts().includes('Cicilan, jadwal rutin & daftar belanja'));
+  assert.ok(harness.texts().includes('Cicilan, anggaran & daftar belanja'));
   await harness.press('Lanjut');
   await new Promise((r) => setTimeout(r, 500));
   await harness.settle();

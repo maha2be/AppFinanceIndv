@@ -309,6 +309,49 @@ class InvestmentReportResponse(BaseModel):
     by_asset: list[CategoryTotalItem]
 
 
+class CashFlowSummaryItem(BaseModel):
+    operating_inflow: int
+    operating_outflow: int
+    operating_net: int
+    investing_outflow: int
+    financing_inflow: int
+    financing_outflow: int
+    financing_net: int
+    net_cash_flow: int
+    saving_rate_pct: float
+    operating_income_breakdown: list[CategoryTotalItem] = []
+    operating_expense_breakdown: list[CategoryTotalItem] = []
+
+
+class CashFlowSnapshotItem(BaseModel):
+    operating_inflow: int
+    operating_outflow: int
+    operating_net: int
+    investing_outflow: int
+    financing_net: int
+    net_cash_flow: int
+
+
+class CashFlowComparisonItem(BaseModel):
+    net_delta: int
+    operating_net_delta: int
+    operating_inflow_delta_pct: Optional[float] = None
+    operating_outflow_delta_pct: Optional[float] = None
+
+
+class CashFlowReportResponse(BaseModel):
+    title: str
+    period: Literal["daily", "weekly", "monthly"]
+    start_date: str
+    end_date: str
+    previous_title: str
+    previous_start_date: str
+    previous_end_date: str
+    current: CashFlowSummaryItem
+    previous: CashFlowSnapshotItem
+    comparison: CashFlowComparisonItem
+
+
 # --- Recurring Transaction Schemas ---
 
 
@@ -528,3 +571,53 @@ class ShoppingListDetailResponse(ShoppingListSummaryResponse):
 class ShoppingListRecordExpenseResponse(BaseModel):
     transaction: TransactionResponse
     shopping_list: ShoppingListDetailResponse
+
+
+# --- Budget Schemas ---
+
+
+class BudgetUpsertRequest(BaseModel):
+    category_id: Optional[int] = Field(None, gt=0)
+    amount: int = Field(..., gt=0)
+    alert_threshold: int = Field(80, ge=1, le=100)
+
+
+class BudgetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+    amount: int
+    alert_threshold: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class BudgetProgressResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    category_id: Optional[int] = None
+    category_name: Optional[str] = None
+    amount: int
+    spent: int
+    remaining: int
+    percentage: float
+    alert_threshold: int
+    status: Literal["safe", "warning", "exceeded"]
+
+
+class BudgetOverviewResponse(BaseModel):
+    year: int
+    month: int
+    start_date: str
+    end_date: str
+    total_expense: int
+    overall_budget: Optional[BudgetProgressResponse] = None
+    category_budgets: list[BudgetProgressResponse] = Field(default_factory=list)
+    allocated_category_total: int
+    warning_count: int
+    exceeded_count: int

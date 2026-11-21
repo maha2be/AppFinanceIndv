@@ -545,12 +545,42 @@ function createHarness({ componentPath, modules, props = {}, mountProps, moduleF
     getTutorialScrollArea: () => undefined,
   };
 
+  const defaultBudgetsService = {
+    budgetApi: {
+      getOverview: async () => null,
+      upsert: async () => null,
+      remove: async () => {},
+    },
+  };
+
+  const defaultBudgetsUtils = {
+    budgetStatusLabel: (s) => s,
+    clampedBudgetPercent: (p) => Math.max(0, Math.min(100, Math.round(p || 0))),
+    formatMonthYearIndo: (y, m) => `${m}/${y}`,
+    shiftMonth: (y, m, d) => ({ year: y, month: m + d }),
+    summarizeBudgetAlertBanner: () => null,
+    formatSignedCurrency: (v, fmt) => fmt(v),
+    buildCashFlowShareText: () => '',
+  };
+
+  const defaultCashFlowCard = {
+    CashFlowStatementCard: () => null,
+  };
+
+  const defaultCardComponent = {
+    Card: (props) => host.h('Card', props),
+  };
+
   const mergedFallbacks = [
     ...moduleFallback,
     [/^(?:\.\.\/)+services\/theme$/, defaultThemeService],
     [/^(?:\.\.\/)+services\/installmentNotifications$/, defaultInstallmentRemindersService],
     [/^(?:\.\.\/)+(?:components\/)?tutorial\/TutorialTarget$/, defaultTutorialTargetComponent],
     [/^(?:\.\.\/)+services\/tutorialTargets$/, defaultTutorialTargetsService],
+    [/^(?:\.\.\/)+services\/budgets$/, defaultBudgetsService],
+    [/^(?:\.\.\/)+utils\/budgets$/, defaultBudgetsUtils],
+    [/^(?:\.\.\/)+components\/reports\/CashFlowStatementCard$/, defaultCashFlowCard],
+    [/^(?:\.\.\/)+components\/ui\/Card$/, defaultCardComponent],
   ];
 
   const Component = loadComponent(

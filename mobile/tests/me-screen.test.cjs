@@ -278,6 +278,7 @@ for (const [label, route] of [
   ['Transaksi berulang', '/recurring'],
   ['Hutang & piutang', '/debts'],
   ['Daftar belanja', '/shopping-lists'],
+  ['Anggaran pribadi', '/budgets'],
   ['Riwayat perubahan', '/transaction-history'],
   ['Pengaturan', '/settings'],
 ]) {

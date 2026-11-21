@@ -222,6 +222,15 @@ export default function MeScreen() {
               colors={colors}
             />
             <MenuRow
+              icon="pie-chart-outline"
+              title="Anggaran pribadi"
+              hint="Batas pengeluaran bulanan per kategori & peringatan"
+              onPress={() => router.push('/budgets')}
+              disabled={accountBusy}
+              styles={styles}
+              colors={colors}
+            />
+            <MenuRow
               icon="time-outline"
               title="Riwayat perubahan"
               hint="Jejak edit dan penghapusan transaksi"

@@ -39,6 +39,7 @@ def test_init_db_creates_core_tables() -> None:
         "password_reset_requests",
         "shopping_lists",
         "shopping_list_items",
+        "budgets",
         "schema_migrations",
     }
 
@@ -111,7 +112,7 @@ def test_init_db_is_idempotent_and_records_version() -> None:
 
     versions = connection.execute("SELECT version FROM schema_migrations").fetchall()
 
-    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert [row[0] for row in versions] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 
 def test_users_telegram_user_id_must_be_unique() -> None:

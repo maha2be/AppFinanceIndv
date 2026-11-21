@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Fonts, Radius, Space } from '../../utils/theme';
 import { createThemedStyles, useTheme } from '../../services/theme';
-import { Debt, DebtSummary, PeriodReport, Transaction, User } from '../../types';
+import { BudgetOverview, Debt, DebtSummary, PeriodReport, Transaction, User } from '../../types';
 import { ReportSummaryCard } from '../../components/ReportSummaryCard';
 import { QuickInputBar } from '../../components/QuickInputBar';
 import { TransactionCard } from '../../components/TransactionCard';
@@ -16,13 +16,15 @@ import { Screen } from '../../components/ui/Screen';
 import { FadeIn } from '../../components/ui/FadeIn';
 import { TutorialTarget } from '../../components/tutorial/TutorialTarget';
 import { reportApi } from '../../services/reports';
+import { budgetApi } from '../../services/budgets';
 import { transactionApi } from '../../services/transactions';
 import { authApi } from '../../services/auth';
 import { debtApi } from '../../services/debts';
 import { describeApiError } from '../../services/auth';
 import { syncInstallmentReminders } from '../../services/installmentNotifications';
 import { findUrgentInstallments } from '../../utils/installmentReminders';
-import { formatDateIndo } from '../../utils/formatRupiah';
+import { summarizeBudgetAlertBanner } from '../../utils/budgets';
+import { formatDateIndo, formatRupiah } from '../../utils/formatRupiah';
 import { localTodayIso } from '../../utils/date';
 
 type HomeReportPeriod = 'daily' | 'weekly' | 'monthly';
@@ -53,6 +55,7 @@ export default function DashboardScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [debtSummary, setDebtSummary] = useState<DebtSummary | null>(null);
   const [activeDebts, setActiveDebts] = useState<Debt[]>([]);
+  const [budgetOverview, setBudgetOverview] = useState<BudgetOverview | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
@@ -78,12 +81,17 @@ export default function DashboardScreen() {
       typeof debtApi.getDebts === 'function'
         ? debtApi.getDebts({ type: 'debt', status: 'active', limit: 100 })
         : Promise.resolve<Debt[]>([]);
-    const [profileResult, reportResult, txResult, debtResult, activeDebtsResult] = await Promise.allSettled([
+    const fetchBudgets =
+      typeof budgetApi?.getOverview === 'function'
+        ? budgetApi.getOverview()
+        : Promise.resolve<BudgetOverview | null>(null);
+    const [profileResult, reportResult, txResult, debtResult, activeDebtsResult, budgetResult] = await Promise.allSettled([
       authApi.getProfile(),
       fetchReportByPeriod(activePeriod),
       transactionApi.getTransactions({ limit: 10 }),
       debtApi.getSummary(),
       fetchActiveDebts,
+      fetchBudgets,
     ]);
 
     if (!mountedRef.current || seq !== requestSeqRef.current) {
@@ -100,6 +108,9 @@ export default function DashboardScreen() {
     if (activeDebtsResult.status === 'fulfilled') {
       setActiveDebts(activeDebtsResult.value);
       void syncInstallmentReminders(activeDebtsResult.value);
+    }
+    if (budgetResult.status === 'fulfilled' && budgetResult.value) {
+      setBudgetOverview(budgetResult.value);
     }
 
     const failures = [profileResult, reportResult, txResult, debtResult].filter(
@@ -161,6 +172,10 @@ export default function DashboardScreen() {
 
   const urgentInstallments = findUrgentInstallments(activeDebts, localTodayIso());
   const topUrgent = urgentInstallments[0] ?? null;
+  const budgetAlert =
+    typeof summarizeBudgetAlertBanner === 'function'
+      ? summarizeBudgetAlertBanner(budgetOverview, formatRupiah)
+      : null;
 
   return (
     <Screen tutorialScrollId="home" refreshing={refreshing} onRefresh={onRefresh}>
@@ -211,6 +226,47 @@ export default function DashboardScreen() {
               </Text>
               <Text style={styles.reminderDetail} numberOfLines={2}>
                 {topUrgent.detail}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
+          </Pressable>
+        ) : null}
+        {budgetAlert ? (
+          <Pressable
+            onPress={() => router.push('/budgets')}
+            disabled={false}
+            accessibilityRole="button"
+            accessibilityLabel={budgetAlert.title}
+            accessibilityHint={budgetAlert.detail}
+            style={({ pressed }) => [
+              styles.reminderBanner,
+              budgetAlert.tone === 'exceeded' && styles.reminderBannerOverdue,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View
+              style={[
+                styles.reminderIconWrap,
+                budgetAlert.tone === 'exceeded' && styles.reminderIconWrapOverdue,
+              ]}
+            >
+              <Ionicons
+                name="pie-chart-outline"
+                size={18}
+                color={budgetAlert.tone === 'exceeded' ? colors.danger : colors.investment}
+              />
+            </View>
+            <View style={styles.reminderBody}>
+              <Text
+                style={[
+                  styles.reminderTitle,
+                  budgetAlert.tone === 'exceeded' && styles.reminderTitleOverdue,
+                ]}
+              >
+                {budgetAlert.title}
+              </Text>
+              <Text style={styles.reminderDetail} numberOfLines={2}>
+                {budgetAlert.detail}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
