@@ -111,13 +111,12 @@ jobs:
 
           echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Download artifact from EAS & compute SHA-256
+      - name: Download artifact from EAS
         working-directory: .
         run: |
           mkdir -p release-assets
           FILE="release-assets/FinanceApp-${{ steps.eas.outputs.release_tag }}.${{ steps.eas.outputs.ext }}"
           curl -fSL "${{ steps.eas.outputs.build_url }}" -o "$FILE"
-          (cd release-assets && sha256sum "$(basename "$FILE")" > SHA256SUMS.txt)
           ls -lh release-assets
 
       - name: Publish GitHub Release
@@ -126,6 +125,4 @@ jobs:
           tag_name: ${{ steps.eas.outputs.release_tag }}
           name: FinanceApp ${{ steps.eas.outputs.release_tag }}
           generate_release_notes: true
-          files: |
-            release-assets/FinanceApp-${{ steps.eas.outputs.release_tag }}.${{ steps.eas.outputs.ext }}
-            release-assets/SHA256SUMS.txt
+          files: release-assets/FinanceApp-${{ steps.eas.outputs.release_tag }}.${{ steps.eas.outputs.ext }}
