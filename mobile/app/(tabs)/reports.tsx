@@ -95,7 +95,7 @@ export default function ReportsScreen() {
   };
 
   return (
-    <Screen refreshing={refreshing} onRefresh={onRefresh}>
+    <Screen tutorialScrollId="reports" refreshing={refreshing} onRefresh={onRefresh}>
       <FadeIn>
         <Text style={styles.title}>Laporan</Text>
         <Segmented items={PERIOD_ITEMS} value={period} onChange={setPeriod} label="Periode laporan" />

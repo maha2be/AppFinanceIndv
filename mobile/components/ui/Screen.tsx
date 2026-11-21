@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   KeyboardAvoidingView,
   KeyboardAvoidingViewProps,
@@ -13,6 +13,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Space } from '../../utils/theme';
 import { createThemedStyles, useTheme } from '../../services/theme';
+import {
+  registerTutorialScrollArea,
+  TutorialScrollId,
+} from '../../services/tutorialTargets';
 
 interface ScreenProps {
   children: React.ReactNode;
@@ -28,6 +32,8 @@ interface ScreenProps {
   bottomInset?: boolean;
   /** Override height avoidance for keyboards that repeatedly resize secure fields. */
   keyboardBehavior?: KeyboardAvoidingViewProps['behavior'];
+  /** Optional scroll registration ID used by spotlight tutorial hints. */
+  tutorialScrollId?: TutorialScrollId;
 }
 
 /** Paper background + safe area + optional pull-to-refresh. */
@@ -41,18 +47,39 @@ export function Screen({
   contentStyle,
   bottomInset = false,
   keyboardBehavior = Platform.OS === 'ios' ? 'padding' : 'height',
+  tutorialScrollId,
 }: ScreenProps) {
   const theme = useTheme();
   const { colors } = theme;
   const styles = useStyles(theme);
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
+  const scrollYRef = useRef(0);
+
+  useEffect(() => {
+    if (!scroll || !tutorialScrollId) return;
+    return registerTutorialScrollArea(tutorialScrollId, {
+      scrollTo: (y: number) => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+      },
+      getScrollY: () => scrollYRef.current,
+    });
+  }, [scroll, tutorialScrollId]);
 
   const body = scroll ? (
     <ScrollView
+      ref={scrollRef}
       style={styles.flex}
       contentContainerStyle={[styles.content, contentStyle]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       scrollEnabled={scrollEnabled}
+      onScroll={(event) => {
+        const y = event?.nativeEvent?.contentOffset?.y;
+        if (typeof y === 'number' && Number.isFinite(y)) {
+          scrollYRef.current = y;
+        }
+      }}
+      scrollEventThrottle={16}
       refreshControl={
         onRefresh ? (
           <RefreshControl

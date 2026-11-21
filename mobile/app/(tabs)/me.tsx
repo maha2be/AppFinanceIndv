@@ -10,6 +10,7 @@ import { Screen } from '../../components/ui/Screen';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { FadeIn } from '../../components/ui/FadeIn';
 import { EditProfileSheet } from '../../components/profile/EditProfileSheet';
+import { TutorialTarget } from '../../components/tutorial/TutorialTarget';
 import { authApi, describeApiError } from '../../services/auth';
 import { getAppLockState, subscribeAppLock } from '../../services/appLock';
 import { openTutorialGuide } from '../../services/tutorialHint';
@@ -119,7 +120,7 @@ export default function MeScreen() {
   const settingsHint = `${lockBadge} · Tema ${themeLabel} · Akun terhubung`;
 
   return (
-    <Screen contentStyle={styles.content}>
+    <Screen tutorialScrollId="me" contentStyle={styles.content}>
       <FadeIn>
         <Text style={styles.title} accessibilityRole="header">Saya</Text>
 
@@ -190,69 +191,73 @@ export default function MeScreen() {
           </View>
         ) : null}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel} accessibilityRole="header">Fitur keuangan</Text>
-          <MenuRow
-            icon="repeat-outline"
-            title="Transaksi berulang"
-            hint="Jadwal pemasukan, pengeluaran, dan investasi otomatis"
-            onPress={() => router.push('/recurring')}
-            disabled={accountBusy}
-            styles={styles}
-            colors={colors}
-          />
-          <MenuRow
-            icon="swap-horizontal-outline"
-            title="Hutang & piutang"
-            hint="Catat pinjaman, tagihan, dan progres pembayaran"
-            onPress={() => router.push('/debts')}
-            disabled={accountBusy}
-            styles={styles}
-            colors={colors}
-          />
-          <MenuRow
-            icon="cart-outline"
-            title="Daftar belanja"
-            hint="Rencana belanja bulanan, target budget, dan ceklis"
-            onPress={() => router.push('/shopping-lists')}
-            disabled={accountBusy}
-            styles={styles}
-            colors={colors}
-          />
-          <MenuRow
-            icon="time-outline"
-            title="Riwayat perubahan"
-            hint="Jejak edit dan penghapusan transaksi"
-            onPress={() => router.push('/transaction-history')}
-            disabled={accountBusy}
-            styles={styles}
-            colors={colors}
-            last
-          />
-        </View>
+        <TutorialTarget id="me.features" trimBottom={Space.xl}>
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel} accessibilityRole="header">Fitur keuangan</Text>
+            <MenuRow
+              icon="repeat-outline"
+              title="Transaksi berulang"
+              hint="Jadwal pemasukan, pengeluaran, dan investasi otomatis"
+              onPress={() => router.push('/recurring')}
+              disabled={accountBusy}
+              styles={styles}
+              colors={colors}
+            />
+            <MenuRow
+              icon="swap-horizontal-outline"
+              title="Hutang & piutang"
+              hint="Catat pinjaman, tagihan, dan progres pembayaran"
+              onPress={() => router.push('/debts')}
+              disabled={accountBusy}
+              styles={styles}
+              colors={colors}
+            />
+            <MenuRow
+              icon="cart-outline"
+              title="Daftar belanja"
+              hint="Rencana belanja bulanan, target budget, dan ceklis"
+              onPress={() => router.push('/shopping-lists')}
+              disabled={accountBusy}
+              styles={styles}
+              colors={colors}
+            />
+            <MenuRow
+              icon="time-outline"
+              title="Riwayat perubahan"
+              hint="Jejak edit dan penghapusan transaksi"
+              onPress={() => router.push('/transaction-history')}
+              disabled={accountBusy}
+              styles={styles}
+              colors={colors}
+              last
+            />
+          </View>
+        </TutorialTarget>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel} accessibilityRole="header">Akun & aplikasi</Text>
-          <MenuRow
-            icon="options-outline"
-            title="Pengaturan"
-            hint={settingsHint}
-            onPress={() => router.push('/settings')}
-            disabled={accountBusy}
-            styles={styles}
-            colors={colors}
-          />
-          <MenuRow
-            icon="compass-outline"
-            title="Panduan aplikasi"
-            hint="Lihat ulang ringkasan tampilan dan fitur utama"
-            onPress={openTutorialGuide}
-            disabled={accountBusy}
-            styles={styles}
-            colors={colors}
-            last
-          />
-        </View>
+        <TutorialTarget id="me.settings" trimBottom={Space.xl}>
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel} accessibilityRole="header">Akun & aplikasi</Text>
+            <MenuRow
+              icon="options-outline"
+              title="Pengaturan"
+              hint={settingsHint}
+              onPress={() => router.push('/settings')}
+              disabled={accountBusy}
+              styles={styles}
+              colors={colors}
+            />
+            <MenuRow
+              icon="compass-outline"
+              title="Panduan aplikasi"
+              hint="Lihat ulang ringkasan tampilan dan fitur utama"
+              onPress={openTutorialGuide}
+              disabled={accountBusy}
+              styles={styles}
+              colors={colors}
+              last
+            />
+          </View>
+        </TutorialTarget>
 
         <View style={styles.logout}>
           <MenuRow

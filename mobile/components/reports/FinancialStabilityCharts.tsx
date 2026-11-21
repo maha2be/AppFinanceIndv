@@ -16,6 +16,7 @@ import {
 import { Card } from '../ui/Card';
 import { EmptyState } from '../ui/EmptyState';
 import { Skeleton } from '../ui/Skeleton';
+import { TutorialTarget } from '../tutorial/TutorialTarget';
 
 interface FinancialStabilityChartsProps {
   report: PeriodReport | null;
@@ -49,11 +50,13 @@ export function FinancialStabilityCharts({ report }: FinancialStabilityChartsPro
   if (!report) {
     return (
       <View style={styles.stack}>
-        <Card style={styles.card}>
-          <Skeleton width="44%" height={12} />
-          <Skeleton width="72%" height={11} style={styles.skeletonSpacer} />
-          <Skeleton width="100%" height={CURVE_HEIGHT} style={styles.skeletonChart} />
-        </Card>
+        <TutorialTarget id="reports.stability">
+          <Card style={styles.card}>
+            <Skeleton width="44%" height={12} />
+            <Skeleton width="72%" height={11} style={styles.skeletonSpacer} />
+            <Skeleton width="100%" height={CURVE_HEIGHT} style={styles.skeletonChart} />
+          </Card>
+        </TutorialTarget>
         <Card style={styles.card}>
           <Skeleton width="46%" height={12} />
           <View style={styles.donutSkeletonRow}>
@@ -100,8 +103,9 @@ export function FinancialStabilityCharts({ report }: FinancialStabilityChartsPro
 
   return (
     <View style={styles.stack}>
-      <Card style={styles.card}>
-        <View style={styles.cardTop}>
+      <TutorialTarget id="reports.stability">
+        <Card style={styles.card}>
+          <View style={styles.cardTop}>
           <View style={styles.titleBlock}>
             <Text style={styles.cardTitle}>Kurva kestabilan</Text>
             <View style={[styles.statusBadge, { backgroundColor: stabilityTint }]}>
@@ -271,6 +275,7 @@ export function FinancialStabilityCharts({ report }: FinancialStabilityChartsPro
           </View>
         )}
       </Card>
+      </TutorialTarget>
 
       <Card style={styles.card}>
         <View style={styles.cardTop}>

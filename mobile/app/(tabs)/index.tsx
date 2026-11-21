@@ -14,6 +14,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { Screen } from '../../components/ui/Screen';
 import { FadeIn } from '../../components/ui/FadeIn';
+import { TutorialTarget } from '../../components/tutorial/TutorialTarget';
 import { reportApi } from '../../services/reports';
 import { transactionApi } from '../../services/transactions';
 import { authApi } from '../../services/auth';
@@ -162,7 +163,7 @@ export default function DashboardScreen() {
   const topUrgent = urgentInstallments[0] ?? null;
 
   return (
-    <Screen refreshing={refreshing} onRefresh={onRefresh}>
+    <Screen tutorialScrollId="home" refreshing={refreshing} onRefresh={onRefresh}>
       <FadeIn>
         <Text style={styles.date}>{formatDateIndo(localTodayIso())}</Text>
         <Text style={styles.greeting} numberOfLines={1}>
@@ -215,17 +216,21 @@ export default function DashboardScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
           </Pressable>
         ) : null}
-        <ReportSummaryCard
-          report={report}
-          periodLabel={PERIOD_LABEL[reportPeriod]}
-          onTogglePeriod={handleTogglePeriod}
-          periodLoading={periodLoading}
-        />
+        <TutorialTarget id="home.summary" trimBottom={Space.lg}>
+          <ReportSummaryCard
+            report={report}
+            periodLabel={PERIOD_LABEL[reportPeriod]}
+            onTogglePeriod={handleTogglePeriod}
+            periodLoading={periodLoading}
+          />
+        </TutorialTarget>
       </FadeIn>
 
       <FadeIn delay={120}>
-        <SectionHeader title="Catat cepat" />
-        <QuickInputBar onSuccess={loadData} />
+        <TutorialTarget id="home.quickInput" trimBottom={Space.lg}>
+          <SectionHeader title="Catat cepat" />
+          <QuickInputBar onSuccess={loadData} />
+        </TutorialTarget>
       </FadeIn>
 
       <FadeIn delay={180}>

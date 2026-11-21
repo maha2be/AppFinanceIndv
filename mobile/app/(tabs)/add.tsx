@@ -12,6 +12,7 @@ import { Segmented, SegmentedItem } from '../../components/ui/Segmented';
 import { Chip } from '../../components/ui/Chip';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { FadeIn } from '../../components/ui/FadeIn';
+import { TutorialTarget } from '../../components/tutorial/TutorialTarget';
 import { categoryApi } from '../../services/categories';
 import { transactionApi } from '../../services/transactions';
 import { describeApiError } from '../../services/auth';
@@ -95,6 +96,7 @@ export default function AddTransactionScreen() {
 
   return (
     <Screen
+      tutorialScrollId="add"
       footer={
         <View style={styles.footer}>
           <Button title="Simpan transaksi" loading={loading} onPress={handleSave} size="lg" />
@@ -103,7 +105,9 @@ export default function AddTransactionScreen() {
     >
       <FadeIn>
         <Text style={styles.title}>Catat transaksi</Text>
-        <Segmented items={typeItems} value={type} onChange={setType} label="Jenis transaksi" />
+        <TutorialTarget id="add.type">
+          <Segmented items={typeItems} value={type} onChange={setType} label="Jenis transaksi" />
+        </TutorialTarget>
       </FadeIn>
 
       {error ? (

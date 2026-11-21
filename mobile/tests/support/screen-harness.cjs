@@ -532,10 +532,25 @@ function createHarness({ componentPath, modules, props = {}, mountProps, moduleF
     sendTestInstallmentNotification: async () => {},
   };
 
+  const defaultTutorialTargetComponent = {
+    TutorialTarget: ({ children }) => children,
+  };
+
+  const defaultTutorialTargetsService = {
+    registerTutorialTarget: () => () => {},
+    registerTutorialScrollArea: () => () => {},
+    notifyTutorialTargetsChanged: () => {},
+    subscribeTutorialTargets: () => () => {},
+    measureTutorialTarget: async () => null,
+    getTutorialScrollArea: () => undefined,
+  };
+
   const mergedFallbacks = [
     ...moduleFallback,
     [/^(?:\.\.\/)+services\/theme$/, defaultThemeService],
     [/^(?:\.\.\/)+services\/installmentNotifications$/, defaultInstallmentRemindersService],
+    [/^(?:\.\.\/)+(?:components\/)?tutorial\/TutorialTarget$/, defaultTutorialTargetComponent],
+    [/^(?:\.\.\/)+services\/tutorialTargets$/, defaultTutorialTargetsService],
   ];
 
   const Component = loadComponent(
