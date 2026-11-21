@@ -354,7 +354,7 @@ export default function SettingsScreen() {
           />
           <DetailRow label="Mata uang" value={user?.currency || (profileLoading ? 'Loading...' : 'Not available')} stacked={stackDetails} styles={styles} />
           <DetailRow label="Zona waktu" value={user?.timezone || (profileLoading ? 'Loading...' : 'Not available')} stacked={stackDetails} styles={styles} />
-          <DetailRow label="Versi" value="1.0.0" stacked={stackDetails} styles={styles} last />
+          <DetailRow label="Versi" value="1.1.0" stacked={stackDetails} styles={styles} last />
         </View>
 
         <View style={styles.dangerArea}>

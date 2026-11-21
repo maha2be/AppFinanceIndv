@@ -7,9 +7,11 @@ const path = require('node:path');
 const test = require('node:test');
 
 const mobileRoot = path.join(__dirname, '..');
+const repoRoot = path.join(mobileRoot, '..');
 const appJson = JSON.parse(fs.readFileSync(path.join(mobileRoot, 'app.json'), 'utf8')).expo;
 const easJson = JSON.parse(fs.readFileSync(path.join(mobileRoot, 'eas.json'), 'utf8'));
 const pkgJson = JSON.parse(fs.readFileSync(path.join(mobileRoot, 'package.json'), 'utf8'));
+const settingsSource = fs.readFileSync(path.join(mobileRoot, 'app/settings.tsx'), 'utf8');
 
 test('eas.json configures remote auto-incrementing versions, channels, and API URLs', () => {
   assert.equal(easJson.cli?.appVersionSource, 'remote');
@@ -37,4 +39,7 @@ test('app.json avoids remote versionCode conflicts and enables fingerprint-based
   assert.ok(projectId, 'EAS projectId must be configured');
   assert.equal(appJson.updates?.url, `https://u.expo.dev/${projectId}`);
   assert.ok(pkgJson.dependencies['expo-updates'], 'expo-updates must be installed');
+  assert.equal(appJson.version, pkgJson.version);
+  assert.match(settingsSource, new RegExp(`label="Versi"\\s+value="${appJson.version.replace(/\./g, '\\.')}"`));
+  assert.ok(fs.existsSync(path.join(repoRoot, '.github/workflows/release-apk.yml')));
 });
